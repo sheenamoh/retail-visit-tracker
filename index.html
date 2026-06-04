@@ -180,7 +180,7 @@ select{width:100%;padding:10px 12px;border:0.5px solid var(--border2);border-rad
 const URL_REF='https://script.google.com/macros/s/AKfycbwCrVjjo9Bn_endLtpkrJGnMayQNDrY5qJf7xvvsJotNT2McRSss46H6Qa-vZOdLAyB/exec';
 const URL_LOG='https://script.google.com/macros/s/AKfycbxvzNnro3qODCADxWTqTgbkdaZon9adYVM6cLT5_K7n5r-PEEqeTuRKY7vOJBKxWxhT/exec';
 
-let RAW=[], SKU_MAP={}, VAR_MAP={}, SKU_LIST=[];
+let RAW=[], SKU_MAP={}, VAR_MAP={}, SKU_LIST=[], RETAILER_LIST=[];
 let state={store:null,visitDay:null,tab:'visit'};
 
 // entry form state
@@ -221,10 +221,11 @@ async function loadData(){
   document.getElementById('refresh-icon').innerHTML='<span class="spinner"></span>';
   setStatus('loading','Fetching data…');
   try{
-    const [logRows,skuRows,varRows]=await Promise.all([
+    const [logRows,skuRows,varRows,retailerRows]=await Promise.all([
       fetchSheet(URL_LOG,'Inventory_Log'),
       fetchSheet(URL_REF,'SKUList'),
-      fetchSheet(URL_REF,'Internal_Variation_List')
+      fetchSheet(URL_REF,'Internal_Variation_List'),
+      fetchSheet(URL_LOG,'Retailer_Master')
     ]);
     SKU_MAP={};
     skuRows.forEach(r=>{
@@ -235,6 +236,7 @@ async function loadData(){
     varRows.forEach(r=>{
       if(r['Internal ID']) VAR_MAP[r['Internal ID']]={sku:r['SKU'],variation:r['Variation']||''};
     });
+    RETAILER_LIST=retailerRows.map(r=>r['Retailer Short Name']).filter(Boolean).sort();
     RAW=logRows.map(r=>{
       const ts=parseTs(r['Timestamp']);
       return{ts,dateKey:dateKey(ts),store:r['Store Name'],action:r['Action type'],internalId:r['Internal ID'],qty:parseFloat(r['Quantity'])||0,sku:r['Scan SKU']};
@@ -253,9 +255,15 @@ function populateStores(){
   const sel=document.getElementById('store-sel');
   const prev=sel.value;
   sel.innerHTML='<option value="">— select store —</option>';
-  [...new Set(RAW.map(r=>r.store))].sort().forEach(s=>{
+  // Use full retailer list; fall back to stores found in log
+  const storesInLog=new Set(RAW.map(r=>r.store));
+  const allStores=RETAILER_LIST.length>0 ? RETAILER_LIST : [...storesInLog].sort();
+  allStores.forEach(s=>{
     const o=document.createElement('option');
-    o.value=s;o.textContent=s;sel.appendChild(o);
+    o.value=s;o.textContent=s;
+    // mark stores with visit history
+    if(!storesInLog.has(s)) o.style.color='var(--text3)';
+    sel.appendChild(o);
   });
   if(prev&&[...sel.options].some(o=>o.value===prev)){sel.value=prev;onStoreChange();}
 }
