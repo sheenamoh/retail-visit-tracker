@@ -126,6 +126,23 @@ select{width:100%;padding:10px 12px;border:0.5px solid var(--border2);border-rad
 .log-qty.rp{color:var(--green)}
 .log-qty.rt{color:var(--amber)}
 .no-store-msg{background:var(--amber-bg);color:var(--amber);border-radius:var(--radius);padding:10px 14px;font-size:13px;margin-bottom:14px}
+/* qty input typeable */
+.qty-input{width:52px;height:34px;border-top:0.5px solid var(--border2);border-bottom:0.5px solid var(--border2);background:var(--bg);color:var(--text);font-size:15px;font-weight:600;text-align:center;border-left:none;border-right:none;-moz-appearance:textfield;}
+.qty-input::-webkit-inner-spin-button,.qty-input::-webkit-outer-spin-button{-webkit-appearance:none;}
+.qty-input:focus{outline:none;background:var(--blue-bg);}
+/* returns tab */
+.ret-sku-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:8px}
+.ret-sku-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.ret-sku-name{font-size:14px;font-weight:600}
+.ret-sku-code{font-size:11px;color:var(--text3);font-family:monospace}
+.ret-var-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:0.5px solid var(--border)}
+.ret-var-row:last-child{border-bottom:none}
+.ret-var-name{font-size:13px;color:var(--text2)}
+.ret-avail{font-size:11px;color:var(--text3);margin-top:1px}
+.ret-save-btn{width:100%;padding:13px;background:var(--amber);color:#fff;border:none;border-radius:var(--radius);font-size:15px;font-weight:600;cursor:pointer;margin-top:14px;margin-bottom:8px}
+.ret-save-btn:disabled{opacity:.4;cursor:not-allowed}
+.ret-save-btn:active{opacity:.85}
+.ret-empty{text-align:center;padding:32px 16px;color:var(--text3);font-size:14px;line-height:1.6}
 </style>
 </head>
 <body>
@@ -165,11 +182,13 @@ select{width:100%;padding:10px 12px;border:0.5px solid var(--border2);border-rad
         <button class="tab" onclick="setTab('sold')">Sold</button>
         <button class="tab" onclick="setTab('do')">DO</button>
         <button class="tab" onclick="setTab('entry')">+ Log</button>
+        <button class="tab" onclick="setTab('returns')">↩ Ret</button>
       </div>
       <div id="tab-visit"></div>
       <div id="tab-sold" style="display:none"></div>
       <div id="tab-do" style="display:none"></div>
       <div id="tab-entry" style="display:none"></div>
+      <div id="tab-returns" style="display:none"></div>
     </div>
     <div id="no-data" style="display:none">
       <!-- show entry form even with no data yet -->
@@ -185,6 +204,7 @@ let state={store:null,visitDay:null,tab:'visit'};
 
 // entry form state
 let eForm={action:'Initial Count', selectedSku:null, qtys:{}, sessionLog:[]};
+let rForm={qtys:{}};
 
 async function fetchSheet(baseUrl,sheetName){
   const res=await fetch(baseUrl+'?sheet='+encodeURIComponent(sheetName));
@@ -351,6 +371,10 @@ function renderMain(){
     tRepl+=s.repl;tRet+=s.ret;
     if(prev&&prev[s.sku]){const pc=prev[s.sku];tSold+=Math.max(0,pc.initial+pc.repl-pc.ret-s.initial);}
   });
+  // also count sold for prev SKUs not in curr today (initial treated as 0)
+  if(prev) Object.keys(prev).forEach(sku=>{
+    if(!curr[sku]){const pc=prev[sku];tSold+=Math.max(0,pc.initial+pc.repl-pc.ret);}
+  });
   document.getElementById('m-skus').textContent=Object.keys(curr).length;
   document.getElementById('m-sold').textContent=prev?tSold:'—';
   document.getElementById('m-repl').textContent=tRepl;
@@ -371,7 +395,7 @@ function renderVisitTab(curr){
         <div class="sbox"><div class="sl">+Repl −Ret</div><div class="sv">+${s.repl} −${s.ret}</div></div>
         <div class="sbox c"><div class="sl">Closing</div><div class="sv">${closing}</div></div>
       </div>`;
-    if(ve.length>1){
+    if(ve.length>=1&&ve.some(([vid])=>vid!==s.sku)){
       html+='<div class="vars">';
       ve.sort((a,b)=>varName(a[0]).localeCompare(varName(b[0]))).forEach(([vid,vd])=>{
         html+=`<div class="var-row"><span class="vname">${varName(vid)}</span><span class="vclose">${vd.initial+vd.repl-vd.ret}</span></div>`;
@@ -385,8 +409,16 @@ function renderVisitTab(curr){
 
 function renderSoldTab(curr,prev){
   if(!prev){document.getElementById('tab-sold').innerHTML='<div class="empty">No previous visit found.<br>Sold data appears once you have 2+ visits per store.</div>';return;}
+  // merge curr + any prev SKUs not logged today (treat today initial as 0)
+  const allSkus={...curr};
+  Object.keys(prev).forEach(sku=>{
+    if(!allSkus[sku]) allSkus[sku]={
+      sku, name:(SKU_MAP[sku]&&SKU_MAP[sku].name)||sku,
+      initial:0, repl:0, ret:0, vars:{}
+    };
+  });
   let html='';
-  Object.values(curr).map(s=>({...s,sold:prev[s.sku]?Math.max(0,prev[s.sku].initial+prev[s.sku].repl-prev[s.sku].ret-s.initial):0}))
+  Object.values(allSkus).map(s=>({...s,sold:prev[s.sku]?Math.max(0,prev[s.sku].initial+prev[s.sku].repl-prev[s.sku].ret-s.initial):0}))
     .filter(s=>s.sold>0).sort((a,b)=>b.sold-a.sold).forEach(s=>{
       const pc=prev[s.sku].initial+prev[s.sku].repl-prev[s.sku].ret;
       const prevVars=prev[s.sku].vars||{};const currVars=s.vars||{};
@@ -488,9 +520,15 @@ function renderSkuSearch(){
   </div>`;
 }
 
+function qtyControl(vid, qty){
+  return `<div class="qty-control">
+    <button class="qty-btn" onclick="adjustQty('${vid}',-1)">−</button>
+    <input class="qty-input" type="number" min="0" id="qty-${vid}" value="${qty}" oninput="setQty('${vid}',this.value)" />
+    <button class="qty-btn" onclick="adjustQty('${vid}',1)">+</button>
+  </div>`;
+}
 function renderVarEntries(){
   const s=eForm.selectedSku;
-  // get variations for this SKU
   const vars=Object.entries(VAR_MAP).filter(([vid,v])=>v.sku===s.sku);
   let html='<div class="entry-section"><div class="label">Quantities</div>';
   if(vars.length>0){
@@ -499,24 +537,15 @@ function renderVarEntries(){
       const qty=eForm.qtys[vid]||0;
       html+=`<div class="var-entry-row">
         <span class="var-entry-name">${v.variation}</span>
-        <div class="qty-control">
-          <button class="qty-btn" onclick="adjustQty('${vid}',-1)">−</button>
-          <div class="qty-display" id="qty-${vid}">${qty}</div>
-          <button class="qty-btn" onclick="adjustQty('${vid}',1)">+</button>
-        </div>
+        ${qtyControl(vid,qty)}
       </div>`;
     });
     html+='</div>';
   } else {
-    // no variations — single qty using SKU as the internal ID
     const qty=eForm.qtys[s.sku]||0;
     html+=`<div class="no-var-row" style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;margin-bottom:14px">
       <span style="font-size:13px;color:var(--text2)">Quantity</span>
-      <div class="qty-control">
-        <button class="qty-btn" onclick="adjustQty('${s.sku}',-1)">−</button>
-        <div class="qty-display" id="qty-${s.sku}">${qty}</div>
-        <button class="qty-btn" onclick="adjustQty('${s.sku}',1)">+</button>
-      </div>
+      ${qtyControl(s.sku,qty)}
     </div>`;
   }
   const totalQty=Object.values(eForm.qtys).reduce((a,b)=>a+b,0);
@@ -581,17 +610,20 @@ function clearSku(){
   eForm.qtys={};
   renderEntryTab();
 }
+function updateSaveBtn(){
+  const totalQty=Object.values(eForm.qtys).reduce((a,b)=>a+b,0);
+  const btn=document.querySelector('.save-btn');
+  if(btn){btn.disabled=totalQty===0;btn.textContent=`Save ${totalQty>0?totalQty+' unit'+(totalQty>1?'s':''):''}`;}
+}
+function setQty(vid,val){
+  eForm.qtys[vid]=Math.max(0,parseInt(val)||0);
+  updateSaveBtn();
+}
 function adjustQty(vid,delta){
   eForm.qtys[vid]=Math.max(0,(eForm.qtys[vid]||0)+delta);
   const el=document.getElementById('qty-'+vid);
-  if(el) el.textContent=eForm.qtys[vid];
-  // update save button
-  const totalQty=Object.values(eForm.qtys).reduce((a,b)=>a+b,0);
-  const btn=document.querySelector('.save-btn');
-  if(btn){
-    btn.disabled=totalQty===0;
-    btn.textContent=`Save ${totalQty>0?totalQty+' unit'+(totalQty>1?'s':''):''}`;
-  }
+  if(el) el.value=eForm.qtys[vid];
+  updateSaveBtn();
 }
 
 async function saveEntries(){
@@ -642,12 +674,109 @@ async function saveEntries(){
   }
 }
 
+function renderReturnsTab(){
+  const el=document.getElementById('tab-returns');
+  if(!state.store||!state.visitDay){el.innerHTML='<div class="ret-empty">Select a store and visit date first.</div>';return;}
+  // build current stock from today's log
+  const rows=getRows(state.store,state.visitDay);
+  const curr=aggregate(rows);
+  // filter to SKUs with available stock (initial + repl > 0)
+  const skusWithStock=Object.values(curr).filter(s=>(s.initial+s.repl)>0).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!skusWithStock.length){el.innerHTML='<div class="ret-empty">No stock logged for this visit yet.<br>Log initial counts first.</div>';return;}
+  let html='';
+  skusWithStock.forEach(s=>{
+    const vars=Object.entries(VAR_MAP).filter(([vid,v])=>v.sku===s.sku);
+    const avail=s.initial+s.repl; // max returnable
+    html+=`<div class="ret-sku-card">
+      <div class="ret-sku-header">
+        <div><div class="ret-sku-name">${s.name}</div><div class="ret-sku-code">${s.sku}</div></div>
+        <div style="font-size:11px;color:var(--text3);text-align:right">Available<br><strong style="font-size:15px;color:var(--text)">${avail}</strong></div>
+      </div>`;
+    if(vars.length>0){
+      vars.sort((a,b)=>a[1].variation.localeCompare(b[1].variation)).forEach(([vid,v])=>{
+        const varAvail=(s.vars[vid]?(s.vars[vid].initial+s.vars[vid].repl):0);
+        if(varAvail===0) return;
+        const retQty=rForm.qtys[vid]||0;
+        html+=`<div class="ret-var-row">
+          <div><div class="ret-var-name">${v.variation}</div><div class="ret-avail">max ${varAvail}</div></div>
+          <div class="qty-control">
+            <button class="qty-btn" onclick="adjustRet('${vid}',${varAvail},-1)">−</button>
+            <input class="qty-input" type="number" min="0" max="${varAvail}" id="rqty-${vid}" value="${retQty}" oninput="setRet('${vid}',${varAvail},this.value)" />
+            <button class="qty-btn" onclick="adjustRet('${vid}',${varAvail},1)">+</button>
+          </div>
+        </div>`;
+      });
+    } else {
+      const retQty=rForm.qtys[s.sku]||0;
+      html+=`<div class="ret-var-row">
+        <div><div class="ret-var-name">Quantity</div><div class="ret-avail">max ${avail}</div></div>
+        <div class="qty-control">
+          <button class="qty-btn" onclick="adjustRet('${s.sku}',${avail},-1)">−</button>
+          <input class="qty-input" type="number" min="0" max="${avail}" id="rqty-${s.sku}" value="${retQty}" oninput="setRet('${s.sku}',${avail},this.value)" />
+          <button class="qty-btn" onclick="adjustRet('${s.sku}',${avail},1)">+</button>
+        </div>
+      </div>`;
+    }
+    html+='</div>';
+  });
+  const totalRet=Object.values(rForm.qtys).reduce((a,b)=>a+b,0);
+  html+=`<button class="ret-save-btn" onclick="saveReturns()" ${totalRet===0?'disabled':''}>
+    Return ${totalRet>0?totalRet+' unit'+(totalRet>1?'s':''):''}
+  </button>`;
+  el.innerHTML=html;
+}
+function adjustRet(vid,max,delta){
+  rForm.qtys[vid]=Math.min(max,Math.max(0,(rForm.qtys[vid]||0)+delta));
+  const el=document.getElementById('rqty-'+vid);
+  if(el) el.value=rForm.qtys[vid];
+  updateRetBtn();
+}
+function setRet(vid,max,val){
+  rForm.qtys[vid]=Math.min(max,Math.max(0,parseInt(val)||0));
+  updateRetBtn();
+}
+function updateRetBtn(){
+  const total=Object.values(rForm.qtys).reduce((a,b)=>a+b,0);
+  const btn=document.querySelector('.ret-save-btn');
+  if(btn){btn.disabled=total===0;btn.textContent=`Return ${total>0?total+' unit'+(total>1?'s':''):''}`;}
+}
+async function saveReturns(){
+  const total=Object.values(rForm.qtys).reduce((a,b)=>a+b,0);
+  if(!total||!state.store) return;
+  const btn=document.querySelector('.ret-save-btn');
+  btn.disabled=true;btn.textContent='Saving…';
+  const now=new Date();
+  const rows=Object.entries(rForm.qtys).filter(([,q])=>q>0).map(([vid,qty])=>({
+    logId:genId(),timestamp:fmtTs(now),storeName:state.store,
+    actionType:'Return',internalId:vid,quantity:qty,
+    scanSku:VAR_MAP[vid]?VAR_MAP[vid].sku:vid
+  }));
+  try{
+    const res=await fetch(URL_LOG,{method:'POST',body:JSON.stringify(rows)});
+    const data=await res.json();
+    if(data.success){
+      rows.forEach(r=>{
+        RAW.push({ts:now,dateKey:dateKey(now),store:state.store,action:'Return',internalId:r.internalId,qty:r.quantity,sku:r.scanSku});
+        eForm.sessionLog.push({skuName:(SKU_MAP[r.scanSku]&&SKU_MAP[r.scanSku].name)||r.scanSku,varName:VAR_MAP[r.internalId]?VAR_MAP[r.internalId].variation:r.internalId,action:'Return',qty:r.quantity});
+      });
+      rForm.qtys={};
+      renderMain();
+      renderReturnsTab();
+      setStatus('ok',`Saved ${rows.length} return${rows.length>1?'s':''}`);
+      setTimeout(hideStatus,2500);
+    }
+  }catch(e){
+    setStatus('error','Save failed: '+e.message);
+    btn.disabled=false;btn.textContent='Save Returns';
+  }
+}
 function setTab(t){
   state.tab=t;
-  const labels={'visit':'Visit','sold':'Sold','do':'DO','entry':'+ Log'};
+  const labels={'visit':'Visit','sold':'Sold','do':'DO','entry':'+ Log','returns':'↩ Ret'};
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.textContent.trim()===labels[t]));
-  ['visit','sold','do','entry'].forEach(id=>document.getElementById('tab-'+id).style.display=t===id?'block':'none');
+  ['visit','sold','do','entry','returns'].forEach(id=>document.getElementById('tab-'+id).style.display=t===id?'block':'none');
   if(t==='entry') renderEntryTab();
+  if(t==='returns') renderReturnsTab();
 }
 window.setTab=setTab;
 
