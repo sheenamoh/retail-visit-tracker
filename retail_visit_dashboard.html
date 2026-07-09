@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Retail Visit Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#ffffff;--bg2:#f5f5f3;--bg3:#ededea;
+  --text:#1a1a18;--text2:#6b6b67;--text3:#a0a09a;
+  --border:rgba(0,0,0,0.1);--border2:rgba(0,0,0,0.18);
+  --blue:#185fa5;--blue-bg:#e6f1fb;
+  --green:#3b6d11;--green-bg:#eaf3de;
+  --amber:#854f0b;--amber-bg:#faeeda;
+  --red:#a32d2d;--red-bg:#fcebeb;
+  --radius:10px;--radius-lg:14px;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#1c1c1a;--bg2:#252523;--bg3:#2e2e2b;
+  --text:#f0f0ec;--text2:#a0a09a;--text3:#6b6b67;
+  --border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.18);
+  --blue:#85b7eb;--blue-bg:#0c447c;
+  --green:#c0dd97;--green-bg:#27500a;
+  --amber:#fac775;--amber-bg:#633806;
+  --red:#f09595;--red-bg:#791f1f;
+}}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--text);font-size:15px;min-height:100vh}
+.app{max-width:480px;margin:0 auto;padding:16px 12px 40px}
+h1{font-size:17px;font-weight:600;margin-bottom:4px}
+.subtitle{font-size:12px;color:var(--text3);margin-bottom:20px}
+.status-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--radius);font-size:12px;margin-bottom:12px}
+.status-bar.loading{background:var(--blue-bg);color:var(--blue)}
+.status-bar.error{background:var(--red-bg);color:var(--red)}
+.status-bar.ok{background:var(--green-bg);color:var(--green)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+.label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+select{width:100%;padding:10px 12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);font-size:14px;margin-bottom:10px;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.visit-pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.pill{padding:6px 12px;border:0.5px solid var(--border2);border-radius:20px;font-size:12px;cursor:pointer;background:var(--bg);color:var(--text2)}
+.pill.active{background:var(--text);color:var(--bg);border-color:var(--text)}
+.metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px}
+.metric{background:var(--bg2);border-radius:var(--radius);padding:12px}
+.metric-lbl{font-size:11px;color:var(--text3);margin-bottom:3px}
+.metric-val{font-size:22px;font-weight:600}
+.metric-val.g{color:var(--green)}
+.metric-val.a{color:var(--amber)}
+.tabs{display:flex;gap:4px;margin-bottom:12px;background:var(--bg2);border-radius:var(--radius);padding:3px}
+.tab{flex:1;padding:7px 0;font-size:11px;border:none;border-radius:8px;background:transparent;cursor:pointer;color:var(--text2);font-weight:500}
+.tab.active{background:var(--bg);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.sku-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:8px}
+.sku-name{font-size:14px;font-weight:600;margin-bottom:2px}
+.sku-code{font-size:11px;color:var(--text3);margin-bottom:10px;font-family:monospace}
+.sku-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.sbox{text-align:center;padding:8px 4px;background:var(--bg2);border-radius:8px}
+.sbox .sl{font-size:10px;color:var(--text3);margin-bottom:2px}
+.sbox .sv{font-size:16px;font-weight:600}
+.sbox.c .sv{color:var(--blue)}
+.sbox.s .sv{color:var(--green)}
+.vars{margin-top:10px;padding-top:10px;border-top:0.5px solid var(--border)}
+.var-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12px;border-bottom:0.5px solid var(--border)}
+.var-row:last-child{border-bottom:none}
+.vname{color:var(--text2)}
+.vclose{font-weight:600}
+.do-wrap{margin-top:4px}
+.do-brand{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:10px 0 4px;border-bottom:0.5px solid var(--border2);margin-bottom:4px;margin-top:14px}
+.do-brand:first-child{margin-top:0}
+.do-hdr{display:grid;grid-template-columns:1fr 38px 38px 38px;gap:4px;font-size:10px;color:var(--text3);padding:3px 0}
+.do-hdr span:not(:first-child){text-align:center}
+.do-row{display:grid;grid-template-columns:1fr 38px 38px 38px;gap:4px;font-size:12px;padding:5px 0;border-bottom:0.5px solid var(--border);align-items:center}
+.do-row:last-child{border-bottom:none}
+.do-val{text-align:center;font-weight:600;color:var(--text3)}
+.do-val.has{color:var(--text)}
+.do-val.ret.has{color:var(--amber)}
+.empty{text-align:center;padding:32px 16px;color:var(--text3);font-size:14px;line-height:1.6}
+.refresh-row{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 12px;background:transparent;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px;color:var(--text2);cursor:pointer}
+.updated{font-size:11px;color:var(--text3);margin-left:auto}
+.spinner{width:11px;height:11px;border:2px solid var(--border2);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Entry form styles ── */
+.entry-section{margin-bottom:16px}
+.entry-section .label{margin-bottom:6px}
+.action-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px}
+.action-btn{padding:10px 4px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;text-align:center}
+.action-btn.active-ic{background:var(--blue-bg);color:var(--blue);border-color:var(--blue)}
+.action-btn.active-rp{background:var(--green-bg);color:var(--green);border-color:var(--green)}
+.action-btn.active-rt{background:var(--amber-bg);color:var(--amber);border-color:var(--amber)}
+.search-wrap{position:relative;margin-bottom:6px}
+.search-wrap input{width:100%;padding:10px 12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);font-size:14px}
+.search-wrap input:focus{outline:none;border-color:var(--blue)}
+.search-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius);max-height:220px;overflow-y:auto;z-index:100;margin-top:2px;box-shadow:0 4px 16px rgba(0,0,0,.12)}
+.search-item{padding:10px 12px;cursor:pointer;border-bottom:0.5px solid var(--border)}
+.search-item:last-child{border-bottom:none}
+.search-item:active{background:var(--bg2)}
+.search-item-name{font-size:13px;font-weight:500}
+.search-item-sku{font-size:11px;color:var(--text3);font-family:monospace;margin-top:1px}
+.selected-sku{background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius);padding:10px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+.selected-sku-info .name{font-size:13px;font-weight:600}
+.selected-sku-info .code{font-size:11px;color:var(--text3);font-family:monospace;margin-top:1px}
+.clear-btn{font-size:12px;color:var(--text3);cursor:pointer;padding:4px 8px;border:0.5px solid var(--border);border-radius:6px;background:transparent}
+.var-entry-list{margin-bottom:14px}
+.var-entry-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border)}
+.var-entry-row:last-child{border-bottom:none}
+.var-entry-name{font-size:13px;color:var(--text)}
+.qty-control{display:flex;align-items:center;gap:0}
+.qty-btn{width:34px;height:34px;border:0.5px solid var(--border2);background:var(--bg2);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+.qty-btn:first-child{border-radius:8px 0 0 8px}
+.qty-btn:last-child{border-radius:0 8px 8px 0}
+.qty-display{width:40px;height:34px;border-top:0.5px solid var(--border2);border-bottom:0.5px solid var(--border2);background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600}
+.no-var-row{padding:10px 0;margin-bottom:14px}
+.no-var-row .qty-control{justify-content:flex-start;gap:0}
+.save-btn{width:100%;padding:13px;background:var(--text);color:var(--bg);border:none;border-radius:var(--radius);font-size:15px;font-weight:600;cursor:pointer;margin-bottom:8px}
+.save-btn:active{opacity:.85}
+.save-btn:disabled{opacity:.4;cursor:not-allowed}
+.entry-hint{font-size:12px;color:var(--text3);text-align:center;margin-bottom:16px}
+.log-preview{margin-top:16px}
+.log-preview-title{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+.log-item{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;font-size:12px}
+.log-item-left .lname{font-weight:600;font-size:13px}
+.log-item-left .lmeta{color:var(--text3);margin-top:1px}
+.log-item-right{text-align:right}
+.log-qty{font-size:16px;font-weight:700}
+.log-qty.ic{color:var(--blue)}
+.log-qty.rp{color:var(--green)}
+.log-qty.rt{color:var(--amber)}
+.no-store-msg{background:var(--amber-bg);color:var(--amber);border-radius:var(--radius);padding:10px 14px;font-size:13px;margin-bottom:14px}
+/* qty input typeable */
+.qty-input{width:52px;height:34px;border-top:0.5px solid var(--border2);border-bottom:0.5px solid var(--border2);background:var(--bg);color:var(--text);font-size:15px;font-weight:600;text-align:center;border-left:none;border-right:none;-moz-appearance:textfield;}
+.qty-input::-webkit-inner-spin-button,.qty-input::-webkit-outer-spin-button{-webkit-appearance:none;}
+.qty-input:focus{outline:none;background:var(--blue-bg);}
+/* confirm stock tab */
+.confirm-intro{background:var(--blue-bg);color:var(--blue);border-radius:var(--radius);padding:10px 14px;font-size:12px;margin-bottom:12px;line-height:1.5}
+.confirm-sku-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:8px}
+.confirm-sku-name{font-size:14px;font-weight:600;margin-bottom:2px}
+.confirm-sku-code{font-size:11px;color:var(--text3);font-family:monospace;margin-bottom:10px}
+.confirm-var-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:0.5px solid var(--border)}
+.confirm-var-row:last-child{border-bottom:none}
+.confirm-var-left .vn{font-size:13px;color:var(--text)}
+.confirm-var-left .vl{font-size:11px;color:var(--text3);margin-top:1px}
+.confirm-save-btn{width:100%;padding:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);font-size:15px;font-weight:600;cursor:pointer;margin-top:14px;margin-bottom:8px}
+.confirm-save-btn:disabled{opacity:.4;cursor:not-allowed}
+.confirm-save-btn:active{opacity:.85}
+/* returns tab */
+.ret-sku-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:8px}
+.ret-sku-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.ret-sku-name{font-size:14px;font-weight:600}
+.ret-sku-code{font-size:11px;color:var(--text3);font-family:monospace}
+.ret-var-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:0.5px solid var(--border)}
+.ret-var-row:last-child{border-bottom:none}
+.ret-var-name{font-size:13px;color:var(--text2)}
+.ret-avail{font-size:11px;color:var(--text3);margin-top:1px}
+.ret-save-btn{width:100%;padding:13px;background:var(--amber);color:#fff;border:none;border-radius:var(--radius);font-size:15px;font-weight:600;cursor:pointer;margin-top:14px;margin-bottom:8px}
+.ret-save-btn:disabled{opacity:.4;cursor:not-allowed}
+.ret-save-btn:active{opacity:.85}
+.ret-empty{text-align:center;padding:32px 16px;color:var(--text3);font-size:14px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Retail Visit Dashboard</h1>
+  <p class="subtitle">Live · Makers INQ / Cham Station</p>
+
+  <div id="status-bar" style="display:none" class="status-bar loading">
+    <span class="dot"></span><span id="status-msg">Loading…</span>
+  </div>
+
+  <div id="dashboard">
+    <div class="refresh-row">
+      <button class="refresh-btn" onclick="loadData()">
+        <span id="refresh-icon">↻</span> Refresh
+      </button>
+      <span class="updated" id="last-updated"></span>
+    </div>
+
+    <div class="label">Store</div>
+    <select id="store-sel" onchange="onStoreChange()"><option value="">— select store —</option></select>
+
+    <div id="visit-area" style="display:none">
+      <div class="label">Visit date</div>
+      <div class="visit-pills" id="visit-pills"></div>
+    </div>
+
+    <div id="main" style="display:none">
+      <div class="metrics">
+        <div class="metric"><div class="metric-lbl">SKUs tracked</div><div class="metric-val" id="m-skus">—</div></div>
+        <div class="metric"><div class="metric-lbl">Units sold</div><div class="metric-val g" id="m-sold">—</div></div>
+        <div class="metric"><div class="metric-lbl">Replenished</div><div class="metric-val" id="m-repl">—</div></div>
+        <div class="metric"><div class="metric-lbl">Returned</div><div class="metric-val a" id="m-ret">—</div></div>
+      </div>
+      <div class="tabs">
+        <button class="tab active" onclick="setTab('visit')">Visit</button>
+        <button class="tab" onclick="setTab('sold')">Sold</button>
+        <button class="tab" onclick="setTab('do')">DO</button>
+        <button class="tab" onclick="setTab('entry')">+ Log</button>
+        <button class="tab" onclick="setTab('returns')">↩ Ret</button>
+        <button class="tab" onclick="setTab('confirm')">✓ Stock</button>
+      </div>
+      <div id="tab-visit"></div>
+      <div id="tab-sold" style="display:none"></div>
+      <div id="tab-do" style="display:none"></div>
+      <div id="tab-entry" style="display:none"></div>
+      <div id="tab-returns" style="display:none"></div>
+      <div id="tab-confirm" style="display:none"></div>
+    </div>
+    <div id="no-data" style="display:none">
+      <!-- show entry form even with no data yet -->
+    </div>
+  </div>
+</div>
+<script>
+const URL_REF='https://script.google.com/macros/s/AKfycbwCrVjjo9Bn_endLtpkrJGnMayQNDrY5qJf7xvvsJotNT2McRSss46H6Qa-vZOdLAyB/exec';
+const URL_LOG='https://script.google.com/macros/s/AKfycbxvzNnro3qODCADxWTqTgbkdaZon9adYVM6cLT5_K7n5r-PEEqeTuRKY7vOJBKxWxhT/exec';
+
+let RAW=[], SKU_MAP={}, VAR_MAP={}, SKU_LIST=[], RETAILER_LIST=[];
+let state={store:null,visitDay:null,tab:'visit'};
+
+// entry form state
+let eForm={action:'Initial Count', selectedSku:null, qtys:{}, sessionLog:[]};
+let rForm={qtys:{}};
+let cForm={qtys:{}};
+
+async function fetchSheet(baseUrl,sheetName){
+  const res=await fetch(baseUrl+'?sheet='+encodeURIComponent(sheetName));
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  return await res.json();
+}
+function parseTs(val){
+  if(!val) return null;
+  const s=String(val);
+  const m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+  if(m) return new Date(+m[3],+m[2]-1,+m[1],+m[4],+m[5],+m[6]);
+  const d=new Date(s); return isNaN(d)?null:d;
+}
+function dateKey(d){
+  if(!d) return null;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function dateLabel(key){
+  const [y,m,d]=key.split('-');
+  return new Date(+y,+m-1,+d).toLocaleDateString('en-MY',{day:'numeric',month:'short',year:'numeric'});
+}
+function setStatus(type,msg){
+  const b=document.getElementById('status-bar');
+  b.style.display='flex'; b.className='status-bar '+type;
+  document.getElementById('status-msg').textContent=msg;
+}
+function hideStatus(){document.getElementById('status-bar').style.display='none';}
+function genId(){return Math.random().toString(16).slice(2,10);}
+function fmtTs(d){
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+}
+
+async function loadData(){
+  document.getElementById('refresh-icon').innerHTML='<span class="spinner"></span>';
+  setStatus('loading','Fetching data…');
+  try{
+    const [logRows,skuRows,varRows,retailerRows]=await Promise.all([
+      fetchSheet(URL_LOG,'Inventory_Log'),
+      fetchSheet(URL_REF,'SKUList'),
+      fetchSheet(URL_REF,'Internal_Variation_List'),
+      fetchSheet(URL_LOG,'Retailer_Master')
+    ]);
+    SKU_MAP={};
+    skuRows.forEach(r=>{
+      if(r['SKU']) SKU_MAP[r['SKU']]={name:r['Product Name']||r['SKU'],category:r['Category']||''};
+    });
+    SKU_LIST=skuRows.filter(r=>r['SKU']).map(r=>({sku:r['SKU'],name:r['Product Name']||r['SKU']}));
+    VAR_MAP={};
+    varRows.forEach(r=>{
+      if(r['Internal ID']) VAR_MAP[r['Internal ID']]={sku:r['SKU'],variation:r['Variation']||''};
+    });
+    RETAILER_LIST=retailerRows.map(r=>r['Retailer Short Name']).filter(Boolean).sort();
+    RAW=logRows.map(r=>{
+      const ts=parseTs(r['Timestamp']);
+      return{ts,dateKey:dateKey(ts),store:r['Store Name'],action:r['Action type'],internalId:r['Internal ID'],qty:parseFloat(r['Quantity'])||0,sku:r['Scan SKU']};
+    }).filter(r=>r.ts&&r.store&&r.sku);
+    document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'});
+    setStatus('ok',`Loaded ${RAW.length} entries`);
+    setTimeout(hideStatus,3000);
+    populateStores();
+  }catch(e){
+    setStatus('error','Failed: '+e.message);
+  }
+  document.getElementById('refresh-icon').textContent='↻';
+}
+
+function populateStores(){
+  const sel=document.getElementById('store-sel');
+  const prev=sel.value;
+  sel.innerHTML='<option value="">— select store —</option>';
+  // Use full retailer list; fall back to stores found in log
+  const storesInLog=new Set(RAW.map(r=>r.store));
+  const allStores=RETAILER_LIST.length>0 ? RETAILER_LIST : [...storesInLog].sort();
+  allStores.forEach(s=>{
+    const o=document.createElement('option');
+    o.value=s;o.textContent=s;
+    // mark stores with visit history
+    if(!storesInLog.has(s)) o.style.color='var(--text3)';
+    sel.appendChild(o);
+  });
+  if(prev&&[...sel.options].some(o=>o.value===prev)){sel.value=prev;onStoreChange();}
+}
+
+function onStoreChange(){
+  state.store=document.getElementById('store-sel').value||null;
+  state.visitDay=null;
+  renderPills();renderMain();
+  renderEntryTab();
+}
+
+function renderPills(){
+  const area=document.getElementById('visit-area');
+  const pills=document.getElementById('visit-pills');
+  pills.innerHTML='';
+  if(!state.store){area.style.display='none';return;}
+  const days=[...new Set(RAW.filter(r=>r.store===state.store).map(r=>r.dateKey))].sort();
+  if(!days.length){area.style.display='none';return;}
+  area.style.display='block';
+  if(!state.visitDay||!days.includes(state.visitDay)) state.visitDay=days[days.length-1];
+  days.forEach(d=>{
+    const b=document.createElement('button');
+    b.className='pill'+(state.visitDay===d?' active':'');
+    b.textContent=dateLabel(d);
+    b.onclick=()=>{state.visitDay=d;renderPills();renderMain();};
+    pills.appendChild(b);
+  });
+}
+
+function getRows(store,day){return RAW.filter(r=>r.store===store&&r.dateKey===day);}
+function getPrevDay(store,day){
+  const days=[...new Set(RAW.filter(r=>r.store===store).map(r=>r.dateKey))].sort();
+  const i=days.indexOf(day);return i>0?days[i-1]:null;
+}
+function aggregate(rows){
+  const map={};
+  rows.forEach(r=>{
+    if(!r.sku) return;
+    if(!map[r.sku]) map[r.sku]={sku:r.sku,name:(SKU_MAP[r.sku]&&SKU_MAP[r.sku].name)||r.sku,category:(SKU_MAP[r.sku]&&SKU_MAP[r.sku].category)||'',initial:0,repl:0,ret:0,vars:{}};
+    const a=r.action;
+    if(a==='Initial Count') map[r.sku].initial+=r.qty;
+    else if(a==='Replenishment') map[r.sku].repl+=r.qty;
+    else if(a==='Return') map[r.sku].ret+=r.qty;
+    if(!map[r.sku].vars[r.internalId]) map[r.sku].vars[r.internalId]={initial:0,repl:0,ret:0};
+    if(a==='Initial Count') map[r.sku].vars[r.internalId].initial+=r.qty;
+    else if(a==='Replenishment') map[r.sku].vars[r.internalId].repl+=r.qty;
+    else if(a==='Return') map[r.sku].vars[r.internalId].ret+=r.qty;
+  });
+  return map;
+}
+function varName(vid){return(VAR_MAP[vid]&&VAR_MAP[vid].variation)||vid.split('-').pop();}
+
+function renderMain(){
+  const main=document.getElementById('main');
+  const noData=document.getElementById('no-data');
+  if(!state.store){main.style.display='none';noData.style.display='none';return;}
+  // always show main if store is selected (entry tab works even with no data)
+  main.style.display='block';noData.style.display='none';
+  if(!state.visitDay){
+    document.getElementById('m-skus').textContent='—';
+    document.getElementById('m-sold').textContent='—';
+    document.getElementById('m-repl').textContent='—';
+    document.getElementById('m-ret').textContent='—';
+    document.getElementById('tab-visit').innerHTML='<div class="empty">Select a visit date above.</div>';
+    document.getElementById('tab-sold').innerHTML='<div class="empty">Select a visit date above.</div>';
+    document.getElementById('tab-do').innerHTML='';
+    return;
+  }
+  const rows=getRows(state.store,state.visitDay);
+  if(!rows.length){
+    document.getElementById('m-skus').textContent='0';
+    document.getElementById('m-sold').textContent='—';
+    document.getElementById('m-repl').textContent='0';
+    document.getElementById('m-ret').textContent='0';
+    document.getElementById('tab-visit').innerHTML='<div class="empty">No entries yet for this visit.<br>Use the + Entry tab to log stock.</div>';
+    document.getElementById('tab-sold').innerHTML='<div class="empty">No entries yet.</div>';
+    document.getElementById('tab-do').innerHTML='';
+    return;
+  }
+  const curr=aggregate(rows);
+  const prevDay=getPrevDay(state.store,state.visitDay);
+  const prev=prevDay?aggregate(getRows(state.store,prevDay)):null;
+  let tSold=0,tRepl=0,tRet=0;
+  Object.values(curr).forEach(s=>{
+    tRepl+=s.repl;tRet+=s.ret;
+    if(prev&&prev[s.sku]){const pc=prev[s.sku];tSold+=Math.max(0,pc.initial+pc.repl-pc.ret-s.initial);}
+  });
+  // also count sold for prev SKUs not in curr today (initial treated as 0)
+  if(prev) Object.keys(prev).forEach(sku=>{
+    if(!curr[sku]){const pc=prev[sku];tSold+=Math.max(0,pc.initial+pc.repl-pc.ret);}
+  });
+  document.getElementById('m-skus').textContent=Object.keys(curr).length;
+  document.getElementById('m-sold').textContent=prev?tSold:'—';
+  document.getElementById('m-repl').textContent=tRepl;
+  document.getElementById('m-ret').textContent=tRet;
+  renderVisitTab(curr);
+  renderSoldTab(curr,prev);
+  renderDOTab(curr);
+}
+
+function renderVisitTab(curr){
+  let html='';
+  Object.values(curr).sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
+    const closing=s.initial+s.repl-s.ret;
+    const ve=Object.entries(s.vars);
+    html+=`<div class="sku-card"><div class="sku-name">${s.name}</div><div class="sku-code">${s.sku}</div>
+      <div class="sku-stats">
+        <div class="sbox"><div class="sl">Initial</div><div class="sv">${s.initial}</div></div>
+        <div class="sbox"><div class="sl">+Repl −Ret</div><div class="sv">+${s.repl} −${s.ret}</div></div>
+        <div class="sbox c"><div class="sl">Closing</div><div class="sv">${closing}</div></div>
+      </div>`;
+    if(ve.length>=1&&ve.some(([vid])=>vid!==s.sku)){
+      html+='<div class="vars">';
+      ve.sort((a,b)=>varName(a[0]).localeCompare(varName(b[0]))).forEach(([vid,vd])=>{
+        html+=`<div class="var-row"><span class="vname">${varName(vid)}</span><span class="vclose">${vd.initial+vd.repl-vd.ret}</span></div>`;
+      });
+      html+='</div>';
+    }
+    html+='</div>';
+  });
+  document.getElementById('tab-visit').innerHTML=html||'<div class="empty">No entries for this visit.</div>';
+}
+
+function renderSoldTab(curr,prev){
+  if(!prev){document.getElementById('tab-sold').innerHTML='<div class="empty">No previous visit found.<br>Sold data appears once you have 2+ visits per store.</div>';return;}
+  // merge curr + any prev SKUs not logged today (treat today initial as 0)
+  const allSkus={...curr};
+  Object.keys(prev).forEach(sku=>{
+    if(!allSkus[sku]) allSkus[sku]={
+      sku, name:(SKU_MAP[sku]&&SKU_MAP[sku].name)||sku,
+      initial:0, repl:0, ret:0, vars:{}
+    };
+  });
+  let html='';
+  Object.values(allSkus).map(s=>({...s,sold:prev[s.sku]?Math.max(0,prev[s.sku].initial+prev[s.sku].repl-prev[s.sku].ret-s.initial):0}))
+    .filter(s=>s.sold>0).sort((a,b)=>b.sold-a.sold).forEach(s=>{
+      const pc=prev[s.sku].initial+prev[s.sku].repl-prev[s.sku].ret;
+      const prevVars=prev[s.sku].vars||{};const currVars=s.vars||{};
+      const allVids=[...new Set([...Object.keys(prevVars),...Object.keys(currVars)])];
+      const varSold=allVids.map(vid=>{
+        const pv=prevVars[vid]||{initial:0,repl:0,ret:0};const cv=currVars[vid]||{initial:0,repl:0,ret:0};
+        const pvClose=pv.initial+pv.repl-pv.ret;const sold=Math.max(0,pvClose-cv.initial);
+        return{vid,sold,pvClose,cvInit:cv.initial};
+      }).filter(v=>v.sold>0).sort((a,b)=>b.sold-a.sold);
+      html+=`<div class="sku-card"><div class="sku-name">${s.name}</div><div class="sku-code">${s.sku}</div>
+        <div class="sku-stats">
+          <div class="sbox s"><div class="sl">Sold</div><div class="sv">${s.sold}</div></div>
+          <div class="sbox"><div class="sl">Prev closing</div><div class="sv">${pc}</div></div>
+          <div class="sbox"><div class="sl">Today initial</div><div class="sv">${s.initial}</div></div>
+        </div>`;
+      if(varSold.length>0){
+        html+='<div class="vars">';
+        varSold.forEach(v=>{
+          html+=`<div class="var-row"><span class="vname">${varName(v.vid)}</span>
+            <span style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:11px;color:var(--text3)">${v.pvClose} → ${v.cvInit}</span>
+              <span style="background:var(--green-bg);color:var(--green);font-size:11px;padding:2px 7px;border-radius:5px;font-weight:600">−${v.sold}</span>
+            </span></div>`;
+        });
+        html+='</div>';
+      }
+      html+='</div>';
+    });
+  document.getElementById('tab-sold').innerHTML=html||'<div class="empty">No sales detected vs previous visit.</div>';
+}
+
+function renderDOTab(curr){
+  const groups={};
+  Object.values(curr).forEach(s=>{
+    let brand='Other';
+    if(s.category==='Atom & the Dot') brand='Atom & The Dot';
+    else if(s.category==='Cham Station') brand=s.sku.startsWith('CP-')?'ChamPOP by Cham Station':'Cham Station';
+    else if(s.category) brand=s.category;
+    if(!groups[brand]) groups[brand]=[];
+    groups[brand].push(s);
+  });
+  const order=['Atom & The Dot','Cham Station','ChamPOP by Cham Station'];
+  const sorted=[...order.filter(b=>groups[b]),...Object.keys(groups).filter(b=>!order.includes(b)&&groups[b])];
+  let html='<div class="do-wrap">';
+  sorted.forEach(brand=>{
+    html+=`<div class="do-brand">${brand}</div><div class="do-hdr"><span>Item</span><span>Init</span><span>Repl</span><span>Ret</span></div>`;
+    groups[brand].sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
+      html+=`<div class="do-row"><span style="font-size:12px;line-height:1.3">${s.name}</span>
+        <span class="do-val ${s.initial?'has':''}">${s.initial||'—'}</span>
+        <span class="do-val ${s.repl?'has':''}">${s.repl||'—'}</span>
+        <span class="do-val ret ${s.ret?'has':''}">${s.ret||'—'}</span></div>`;
+    });
+  });
+  html+='</div>';
+  document.getElementById('tab-do').innerHTML=html;
+}
+
+// ── ENTRY FORM ─────────────────────────────────────────
+function renderEntryTab(){
+  const el=document.getElementById('tab-entry');
+  if(!state.store){
+    el.innerHTML='<div class="no-store-msg">Select a store above to start logging entries.</div>';
+    return;
+  }
+  el.innerHTML=`
+    <div class="entry-section">
+      <div class="label">Action type</div>
+      <div class="action-btns">
+        <button class="action-btn ${eForm.action==='Initial Count'?'active-ic':''}" onclick="setAction('Initial Count')">Initial count</button>
+        <button class="action-btn ${eForm.action==='Replenishment'?'active-rp':''}" onclick="setAction('Replenishment')">Replenishment</button>
+        <button class="action-btn ${eForm.action==='Return'?'active-rt':''}" onclick="setAction('Return')">Return</button>
+      </div>
+    </div>
+    <div class="entry-section">
+      <div class="label">SKU</div>
+      ${eForm.selectedSku ? renderSelectedSku() : renderSkuSearch()}
+    </div>
+    ${eForm.selectedSku ? renderVarEntries() : ''}
+    ${renderSessionLog()}
+  `;
+  if(!eForm.selectedSku) initSearch();
+}
+
+function renderSelectedSku(){
+  const s=eForm.selectedSku;
+  return `<div class="selected-sku">
+    <div class="selected-sku-info">
+      <div class="name">${s.name}</div>
+      <div class="code">${s.sku}</div>
+    </div>
+    <button class="clear-btn" onclick="clearSku()">Change</button>
+  </div>`;
+}
+
+function renderSkuSearch(){
+  return `<div class="search-wrap">
+    <input type="text" id="sku-search" placeholder="Type product name or SKU code…" autocomplete="off" />
+    <div class="search-dropdown" id="search-dropdown" style="display:none"></div>
+  </div>`;
+}
+
+function qtyControl(vid, qty){
+  return `<div class="qty-control">
+    <button class="qty-btn" onclick="adjustQty('${vid}',-1)">−</button>
+    <input class="qty-input" type="number" min="0" id="qty-${vid}" value="${qty}" oninput="setQty('${vid}',this.value)" />
+    <button class="qty-btn" onclick="adjustQty('${vid}',1)">+</button>
+  </div>`;
+}
+function renderVarEntries(){
+  const s=eForm.selectedSku;
+  const vars=Object.entries(VAR_MAP).filter(([vid,v])=>v.sku===s.sku);
+  let html='<div class="entry-section"><div class="label">Quantities</div>';
+  if(vars.length>0){
+    html+='<div class="var-entry-list">';
+    vars.sort((a,b)=>a[1].variation.localeCompare(b[1].variation)).forEach(([vid,v])=>{
+      const qty=eForm.qtys[vid]||0;
+      html+=`<div class="var-entry-row">
+        <span class="var-entry-name">${v.variation}</span>
+        ${qtyControl(vid,qty)}
+      </div>`;
+    });
+    html+='</div>';
+  } else {
+    const qty=eForm.qtys[s.sku]||0;
+    html+=`<div class="no-var-row" style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;margin-bottom:14px">
+      <span style="font-size:13px;color:var(--text2)">Quantity</span>
+      ${qtyControl(s.sku,qty)}
+    </div>`;
+  }
+  const totalQty=Object.values(eForm.qtys).reduce((a,b)=>a+b,0);
+  html+=`<button class="save-btn" onclick="saveEntries()" ${totalQty===0?'disabled':''}>
+    Save ${totalQty>0?totalQty+' unit'+(totalQty>1?'s':''):''}
+  </button>
+  <p class="entry-hint">Saves to Google Sheet · then ready for next SKU</p>
+  </div>`;
+  return html;
+}
+
+function renderSessionLog(){
+  if(!eForm.sessionLog.length) return '';
+  let html='<div class="log-preview"><div class="log-preview-title">Saved this session</div>';
+  [...eForm.sessionLog].reverse().slice(0,8).forEach(item=>{
+    const cls=item.action==='Initial Count'?'ic':item.action==='Replenishment'?'rp':'rt';
+    const label=item.action==='Initial Count'?'Initial':item.action==='Replenishment'?'Replen':'Return';
+    html+=`<div class="log-item">
+      <div class="log-item-left">
+        <div class="lname">${item.skuName}</div>
+        <div class="lmeta">${item.varName} · ${label}</div>
+      </div>
+      <div class="log-item-right"><div class="log-qty ${cls}">${item.qty}</div></div>
+    </div>`;
+  });
+  html+='</div>';
+  return html;
+}
+
+function initSearch(){
+  const input=document.getElementById('sku-search');
+  const dropdown=document.getElementById('search-dropdown');
+  if(!input) return;
+  input.addEventListener('input',()=>{
+    const q=input.value.trim().toLowerCase();
+    if(!q){dropdown.style.display='none';return;}
+    const matches=SKU_LIST.filter(s=>s.name.toLowerCase().includes(q)||s.sku.toLowerCase().includes(q)).slice(0,12);
+    if(!matches.length){dropdown.style.display='none';return;}
+    dropdown.innerHTML=matches.map(s=>`
+      <div class="search-item" onclick="selectSku('${s.sku}')">
+        <div class="search-item-name">${s.name}</div>
+        <div class="search-item-sku">${s.sku}</div>
+      </div>`).join('');
+    dropdown.style.display='block';
+  });
+  input.focus();
+}
+
+function setAction(a){
+  eForm.action=a;
+  renderEntryTab();
+}
+function selectSku(sku){
+  const s=SKU_LIST.find(x=>x.sku===sku);
+  if(!s) return;
+  eForm.selectedSku=s;
+  eForm.qtys={};
+  renderEntryTab();
+}
+function clearSku(){
+  eForm.selectedSku=null;
+  eForm.qtys={};
+  renderEntryTab();
+}
+function updateSaveBtn(){
+  const totalQty=Object.values(eForm.qtys).reduce((a,b)=>a+b,0);
+  const btn=document.querySelector('.save-btn');
+  if(btn){btn.disabled=totalQty===0;btn.textContent=`Save ${totalQty>0?totalQty+' unit'+(totalQty>1?'s':''):''}`;}
+}
+function setQty(vid,val){
+  eForm.qtys[vid]=Math.max(0,parseInt(val)||0);
+  updateSaveBtn();
+}
+function adjustQty(vid,delta){
+  eForm.qtys[vid]=Math.max(0,(eForm.qtys[vid]||0)+delta);
+  const el=document.getElementById('qty-'+vid);
+  if(el) el.value=eForm.qtys[vid];
+  updateSaveBtn();
+}
+
+async function saveEntries(){
+  const totalQty=Object.values(eForm.qtys).reduce((a,b)=>a+b,0);
+  if(!totalQty||!eForm.selectedSku||!state.store) return;
+  const btn=document.querySelector('.save-btn');
+  btn.disabled=true; btn.textContent='Saving…';
+  const now=new Date();
+  const rows=Object.entries(eForm.qtys)
+    .filter(([,qty])=>qty>0)
+    .map(([vid,qty])=>({
+      logId:genId(),
+      timestamp:fmtTs(now),
+      storeName:state.store,
+      actionType:eForm.action,
+      internalId:vid,
+      quantity:qty,
+      scanSku:eForm.selectedSku.sku
+    }));
+  try{
+    const res=await fetch(URL_LOG,{
+      method:'POST',
+      body:JSON.stringify(rows)
+    });
+    const data=await res.json();
+    if(data.success){
+      // add to session log
+      rows.forEach(r=>{
+        const vn=VAR_MAP[r.internalId]?VAR_MAP[r.internalId].variation:r.internalId===r.scanSku?'—':r.internalId;
+        eForm.sessionLog.push({skuName:eForm.selectedSku.name,varName:vn,action:eForm.action,qty:r.quantity});
+      });
+      // add to local RAW so dashboard updates immediately
+      rows.forEach(r=>{
+        RAW.push({ts:now,dateKey:dateKey(now),store:state.store,action:r.actionType,internalId:r.internalId,qty:r.quantity,sku:r.scanSku});
+      });
+      // reset SKU but keep action + store
+      eForm.selectedSku=null; eForm.qtys={};
+      renderPills();
+      if(!state.visitDay) state.visitDay=dateKey(now);
+      renderMain();
+      renderEntryTab();
+      setStatus('ok',`Saved ${rows.length} entr${rows.length>1?'ies':'y'}`);
+      setTimeout(hideStatus,2500);
+    }
+  }catch(e){
+    setStatus('error','Save failed: '+e.message);
+    btn.disabled=false; btn.textContent='Save';
+  }
+}
+
+function renderReturnsTab(){
+  const el=document.getElementById('tab-returns');
+  if(!state.store||!state.visitDay){el.innerHTML='<div class="ret-empty">Select a store and visit date first.</div>';return;}
+  // build current stock from today's log
+  const rows=getRows(state.store,state.visitDay);
+  const curr=aggregate(rows);
+  // filter to SKUs with available stock (initial + repl > 0)
+  const skusWithStock=Object.values(curr).filter(s=>(s.initial+s.repl)>0).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!skusWithStock.length){el.innerHTML='<div class="ret-empty">No stock logged for this visit yet.<br>Log initial counts first.</div>';return;}
+  let html='';
+  skusWithStock.forEach(s=>{
+    const vars=Object.entries(VAR_MAP).filter(([vid,v])=>v.sku===s.sku);
+    const avail=s.initial+s.repl; // max returnable
+    html+=`<div class="ret-sku-card">
+      <div class="ret-sku-header">
+        <div><div class="ret-sku-name">${s.name}</div><div class="ret-sku-code">${s.sku}</div></div>
+        <div style="font-size:11px;color:var(--text3);text-align:right">Available<br><strong style="font-size:15px;color:var(--text)">${avail}</strong></div>
+      </div>`;
+    if(vars.length>0){
+      vars.sort((a,b)=>a[1].variation.localeCompare(b[1].variation)).forEach(([vid,v])=>{
+        const varAvail=(s.vars[vid]?(s.vars[vid].initial+s.vars[vid].repl):0);
+        if(varAvail===0) return;
+        const retQty=rForm.qtys[vid]||0;
+        html+=`<div class="ret-var-row">
+          <div><div class="ret-var-name">${v.variation}</div><div class="ret-avail">max ${varAvail}</div></div>
+          <div class="qty-control">
+            <button class="qty-btn" onclick="adjustRet('${vid}',${varAvail},-1)">−</button>
+            <input class="qty-input" type="number" min="0" max="${varAvail}" id="rqty-${vid}" value="${retQty}" oninput="setRet('${vid}',${varAvail},this.value)" />
+            <button class="qty-btn" onclick="adjustRet('${vid}',${varAvail},1)">+</button>
+          </div>
+        </div>`;
+      });
+    } else {
+      const retQty=rForm.qtys[s.sku]||0;
+      html+=`<div class="ret-var-row">
+        <div><div class="ret-var-name">Quantity</div><div class="ret-avail">max ${avail}</div></div>
+        <div class="qty-control">
+          <button class="qty-btn" onclick="adjustRet('${s.sku}',${avail},-1)">−</button>
+          <input class="qty-input" type="number" min="0" max="${avail}" id="rqty-${s.sku}" value="${retQty}" oninput="setRet('${s.sku}',${avail},this.value)" />
+          <button class="qty-btn" onclick="adjustRet('${s.sku}',${avail},1)">+</button>
+        </div>
+      </div>`;
+    }
+    html+='</div>';
+  });
+  const totalRet=Object.values(rForm.qtys).reduce((a,b)=>a+b,0);
+  html+=`<button class="ret-save-btn" onclick="saveReturns()" ${totalRet===0?'disabled':''}>
+    Return ${totalRet>0?totalRet+' unit'+(totalRet>1?'s':''):''}
+  </button>`;
+  el.innerHTML=html;
+}
+function adjustRet(vid,max,delta){
+  rForm.qtys[vid]=Math.min(max,Math.max(0,(rForm.qtys[vid]||0)+delta));
+  const el=document.getElementById('rqty-'+vid);
+  if(el) el.value=rForm.qtys[vid];
+  updateRetBtn();
+}
+function setRet(vid,max,val){
+  rForm.qtys[vid]=Math.min(max,Math.max(0,parseInt(val)||0));
+  updateRetBtn();
+}
+function updateRetBtn(){
+  const total=Object.values(rForm.qtys).reduce((a,b)=>a+b,0);
+  const btn=document.querySelector('.ret-save-btn');
+  if(btn){btn.disabled=total===0;btn.textContent=`Return ${total>0?total+' unit'+(total>1?'s':''):''}`;}
+}
+async function saveReturns(){
+  const total=Object.values(rForm.qtys).reduce((a,b)=>a+b,0);
+  if(!total||!state.store) return;
+  const btn=document.querySelector('.ret-save-btn');
+  btn.disabled=true;btn.textContent='Saving…';
+  const now=new Date();
+  const rows=Object.entries(rForm.qtys).filter(([,q])=>q>0).map(([vid,qty])=>({
+    logId:genId(),timestamp:fmtTs(now),storeName:state.store,
+    actionType:'Return',internalId:vid,quantity:qty,
+    scanSku:VAR_MAP[vid]?VAR_MAP[vid].sku:vid
+  }));
+  try{
+    const res=await fetch(URL_LOG,{method:'POST',body:JSON.stringify(rows)});
+    const data=await res.json();
+    if(data.success){
+      rows.forEach(r=>{
+        RAW.push({ts:now,dateKey:dateKey(now),store:state.store,action:'Return',internalId:r.internalId,qty:r.quantity,sku:r.scanSku});
+        eForm.sessionLog.push({skuName:(SKU_MAP[r.scanSku]&&SKU_MAP[r.scanSku].name)||r.scanSku,varName:VAR_MAP[r.internalId]?VAR_MAP[r.internalId].variation:r.internalId,action:'Return',qty:r.quantity});
+      });
+      rForm.qtys={};
+      renderMain();
+      renderReturnsTab();
+      setStatus('ok',`Saved ${rows.length} return${rows.length>1?'s':''}`);
+      setTimeout(hideStatus,2500);
+    }
+  }catch(e){
+    setStatus('error','Save failed: '+e.message);
+    btn.disabled=false;btn.textContent='Save Returns';
+  }
+}
+function renderConfirmTab(){
+  const el=document.getElementById('tab-confirm');
+  if(!state.store){el.innerHTML='<div class="ret-empty">Select a store first.</div>';return;}
+  // get previous visit
+  const days=[...new Set(RAW.filter(r=>r.store===state.store).map(r=>r.dateKey))].sort();
+  // find prev day relative to selected visit (or latest if no visit selected)
+  const refDay=state.visitDay||days[days.length-1];
+  const refIdx=days.indexOf(refDay);
+  const prevDay=refIdx>0?days[refIdx-1]:null;
+  if(!prevDay){
+    el.innerHTML='<div class="ret-empty">No previous visit found for this store.<br>Use <strong>+ Log</strong> to enter initial counts manually.</div>';
+    return;
+  }
+  const prev=aggregate(getRows(state.store,prevDay));
+  const skus=Object.values(prev).filter(s=>(s.initial+s.repl-s.ret)>0).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!skus.length){el.innerHTML='<div class="ret-empty">No closing stock found from previous visit.</div>';return;}
+  // init cForm with prev closing stock if not already set
+  if(Object.keys(cForm.qtys).length===0){
+    skus.forEach(s=>{
+      const vars=Object.entries(VAR_MAP).filter(([vid,v])=>v.sku===s.sku);
+      if(vars.length>0){
+        vars.forEach(([vid])=>{
+          const vd=s.vars[vid]||{initial:0,repl:0,ret:0};
+          const closing=vd.initial+vd.repl-vd.ret;
+          if(closing>0) cForm.qtys[vid]=closing;
+        });
+      } else {
+        const closing=s.initial+s.repl-s.ret;
+        if(closing>0) cForm.qtys[s.sku]=closing;
+      }
+    });
+  }
+  let html=`<div class="confirm-intro">Pre-filled with closing stock from <strong>${dateLabel(prevDay)}</strong>. Adjust any that have changed, then save as today's initial count.</div>`;
+  skus.forEach(s=>{
+    const vars=Object.entries(VAR_MAP).filter(([vid,v])=>v.sku===s.sku);
+    const prevClosing=s.initial+s.repl-s.ret;
+    html+=`<div class="confirm-sku-card">
+      <div class="confirm-sku-name">${s.name}</div>
+      <div class="confirm-sku-code">${s.sku}</div>`;
+    if(vars.length>0){
+      vars.sort((a,b)=>a[1].variation.localeCompare(b[1].variation)).forEach(([vid,v])=>{
+        const vd=s.vars[vid]||{initial:0,repl:0,ret:0};
+        const vClosing=vd.initial+vd.repl-vd.ret;
+        if(vClosing<=0) return;
+        const cur=cForm.qtys[vid]!==undefined?cForm.qtys[vid]:vClosing;
+        html+=`<div class="confirm-var-row">
+          <div class="confirm-var-left">
+            <div class="vn">${v.variation}</div>
+            <div class="vl">last closing: ${vClosing}</div>
+          </div>
+          <div class="qty-control">
+            <button class="qty-btn" onclick="adjustConfirm('${vid}',${vClosing},-1)">−</button>
+            <input class="qty-input" type="number" min="0" id="cqty-${vid}" value="${cur}" oninput="setConfirm('${vid}',this.value)" />
+            <button class="qty-btn" onclick="adjustConfirm('${vid}',${vClosing},1)">+</button>
+          </div>
+        </div>`;
+      });
+    } else {
+      const cur=cForm.qtys[s.sku]!==undefined?cForm.qtys[s.sku]:prevClosing;
+      html+=`<div class="confirm-var-row">
+        <div class="confirm-var-left">
+          <div class="vn">Quantity</div>
+          <div class="vl">last closing: ${prevClosing}</div>
+        </div>
+        <div class="qty-control">
+          <button class="qty-btn" onclick="adjustConfirm('${s.sku}',${prevClosing},-1)">−</button>
+          <input class="qty-input" type="number" min="0" id="cqty-${s.sku}" value="${cur}" oninput="setConfirm('${s.sku}',this.value)" />
+          <button class="qty-btn" onclick="adjustConfirm('${s.sku}',${prevClosing},1)">+</button>
+        </div>
+      </div>`;
+    }
+    html+='</div>';
+  });
+  const total=Object.values(cForm.qtys).reduce((a,b)=>a+b,0);
+  html+=`<button class="confirm-save-btn" onclick="saveConfirm()" ${total===0?'disabled':''}>
+    Save as Initial Count (${total} units)
+  </button>
+  <p class="entry-hint">Saves all as Initial Count entries for today</p>`;
+  el.innerHTML=html;
+}
+function adjustConfirm(vid,_max,delta){
+  cForm.qtys[vid]=Math.max(0,(cForm.qtys[vid]||0)+delta);
+  const el=document.getElementById('cqty-'+vid);
+  if(el) el.value=cForm.qtys[vid];
+  updateConfirmBtn();
+}
+function setConfirm(vid,val){
+  cForm.qtys[vid]=Math.max(0,parseInt(val)||0);
+  updateConfirmBtn();
+}
+function updateConfirmBtn(){
+  const total=Object.values(cForm.qtys).reduce((a,b)=>a+b,0);
+  const btn=document.querySelector('.confirm-save-btn');
+  if(btn){btn.disabled=total===0;btn.textContent=`Save as Initial Count (${total} units)`;}
+}
+async function saveConfirm(){
+  const total=Object.values(cForm.qtys).reduce((a,b)=>a+b,0);
+  if(!total||!state.store) return;
+  const btn=document.querySelector('.confirm-save-btn');
+  btn.disabled=true;btn.textContent='Saving…';
+  const now=new Date();
+  const rows=Object.entries(cForm.qtys).filter(([,q])=>q>0).map(([vid,qty])=>({
+    logId:genId(),timestamp:fmtTs(now),storeName:state.store,
+    actionType:'Initial Count',internalId:vid,quantity:qty,
+    scanSku:VAR_MAP[vid]?VAR_MAP[vid].sku:vid
+  }));
+  try{
+    const res=await fetch(URL_LOG,{method:'POST',body:JSON.stringify(rows)});
+    const data=await res.json();
+    if(data.success){
+      rows.forEach(r=>{
+        RAW.push({ts:now,dateKey:dateKey(now),store:state.store,action:'Initial Count',internalId:r.internalId,qty:r.quantity,sku:r.scanSku});
+        eForm.sessionLog.push({skuName:(SKU_MAP[r.scanSku]&&SKU_MAP[r.scanSku].name)||r.scanSku,varName:VAR_MAP[r.internalId]?VAR_MAP[r.internalId].variation:r.internalId,action:'Initial Count',qty:r.quantity});
+      });
+      cForm.qtys={};
+      renderPills();
+      if(!state.visitDay) state.visitDay=dateKey(now);
+      renderMain();
+      setStatus('ok',`Saved ${rows.length} initial count${rows.length>1?'s':''}`);
+      setTimeout(hideStatus,2500);
+      setTab('visit');
+    }
+  }catch(e){
+    setStatus('error','Save failed: '+e.message);
+    btn.disabled=false;btn.textContent='Save as Initial Count';
+  }
+}
+function setTab(t){
+  state.tab=t;
+  // reset cForm when switching to confirm so it re-reads prev closing fresh
+  if(t==='confirm') cForm.qtys={};
+  const labels={'visit':'Visit','sold':'Sold','do':'DO','entry':'+ Log','returns':'↩ Ret','confirm':'✓ Stock'};
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.textContent.trim()===labels[t]));
+  ['visit','sold','do','entry','returns','confirm'].forEach(id=>document.getElementById('tab-'+id).style.display=t===id?'block':'none');
+  if(t==='entry') renderEntryTab();
+  if(t==='returns') renderReturnsTab();
+  if(t==='confirm') renderConfirmTab();
+}
+window.setTab=setTab;
+
+window.addEventListener('load',loadData);
+</script>
+</body>
+</html>
