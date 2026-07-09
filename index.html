@@ -130,6 +130,18 @@ select{width:100%;padding:10px 12px;border:0.5px solid var(--border2);border-rad
 .qty-input{width:52px;height:34px;border-top:0.5px solid var(--border2);border-bottom:0.5px solid var(--border2);background:var(--bg);color:var(--text);font-size:15px;font-weight:600;text-align:center;border-left:none;border-right:none;-moz-appearance:textfield;}
 .qty-input::-webkit-inner-spin-button,.qty-input::-webkit-outer-spin-button{-webkit-appearance:none;}
 .qty-input:focus{outline:none;background:var(--blue-bg);}
+/* confirm stock tab */
+.confirm-intro{background:var(--blue-bg);color:var(--blue);border-radius:var(--radius);padding:10px 14px;font-size:12px;margin-bottom:12px;line-height:1.5}
+.confirm-sku-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:8px}
+.confirm-sku-name{font-size:14px;font-weight:600;margin-bottom:2px}
+.confirm-sku-code{font-size:11px;color:var(--text3);font-family:monospace;margin-bottom:10px}
+.confirm-var-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:0.5px solid var(--border)}
+.confirm-var-row:last-child{border-bottom:none}
+.confirm-var-left .vn{font-size:13px;color:var(--text)}
+.confirm-var-left .vl{font-size:11px;color:var(--text3);margin-top:1px}
+.confirm-save-btn{width:100%;padding:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);font-size:15px;font-weight:600;cursor:pointer;margin-top:14px;margin-bottom:8px}
+.confirm-save-btn:disabled{opacity:.4;cursor:not-allowed}
+.confirm-save-btn:active{opacity:.85}
 /* returns tab */
 .ret-sku-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:8px}
 .ret-sku-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
@@ -183,12 +195,14 @@ select{width:100%;padding:10px 12px;border:0.5px solid var(--border2);border-rad
         <button class="tab" onclick="setTab('do')">DO</button>
         <button class="tab" onclick="setTab('entry')">+ Log</button>
         <button class="tab" onclick="setTab('returns')">↩ Ret</button>
+        <button class="tab" onclick="setTab('confirm')">✓ Stock</button>
       </div>
       <div id="tab-visit"></div>
       <div id="tab-sold" style="display:none"></div>
       <div id="tab-do" style="display:none"></div>
       <div id="tab-entry" style="display:none"></div>
       <div id="tab-returns" style="display:none"></div>
+      <div id="tab-confirm" style="display:none"></div>
     </div>
     <div id="no-data" style="display:none">
       <!-- show entry form even with no data yet -->
@@ -205,6 +219,7 @@ let state={store:null,visitDay:null,tab:'visit'};
 // entry form state
 let eForm={action:'Initial Count', selectedSku:null, qtys:{}, sessionLog:[]};
 let rForm={qtys:{}};
+let cForm={qtys:{}};
 
 async function fetchSheet(baseUrl,sheetName){
   const res=await fetch(baseUrl+'?sheet='+encodeURIComponent(sheetName));
@@ -770,13 +785,143 @@ async function saveReturns(){
     btn.disabled=false;btn.textContent='Save Returns';
   }
 }
+function renderConfirmTab(){
+  const el=document.getElementById('tab-confirm');
+  if(!state.store){el.innerHTML='<div class="ret-empty">Select a store first.</div>';return;}
+  // get previous visit
+  const days=[...new Set(RAW.filter(r=>r.store===state.store).map(r=>r.dateKey))].sort();
+  // find prev day relative to selected visit (or latest if no visit selected)
+  const refDay=state.visitDay||days[days.length-1];
+  const refIdx=days.indexOf(refDay);
+  const prevDay=refIdx>0?days[refIdx-1]:null;
+  if(!prevDay){
+    el.innerHTML='<div class="ret-empty">No previous visit found for this store.<br>Use <strong>+ Log</strong> to enter initial counts manually.</div>';
+    return;
+  }
+  const prev=aggregate(getRows(state.store,prevDay));
+  const skus=Object.values(prev).filter(s=>(s.initial+s.repl-s.ret)>0).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!skus.length){el.innerHTML='<div class="ret-empty">No closing stock found from previous visit.</div>';return;}
+  // init cForm with prev closing stock if not already set
+  if(Object.keys(cForm.qtys).length===0){
+    skus.forEach(s=>{
+      const vars=Object.entries(VAR_MAP).filter(([vid,v])=>v.sku===s.sku);
+      if(vars.length>0){
+        vars.forEach(([vid])=>{
+          const vd=s.vars[vid]||{initial:0,repl:0,ret:0};
+          const closing=vd.initial+vd.repl-vd.ret;
+          if(closing>0) cForm.qtys[vid]=closing;
+        });
+      } else {
+        const closing=s.initial+s.repl-s.ret;
+        if(closing>0) cForm.qtys[s.sku]=closing;
+      }
+    });
+  }
+  let html=`<div class="confirm-intro">Pre-filled with closing stock from <strong>${dateLabel(prevDay)}</strong>. Adjust any that have changed, then save as today's initial count.</div>`;
+  skus.forEach(s=>{
+    const vars=Object.entries(VAR_MAP).filter(([vid,v])=>v.sku===s.sku);
+    const prevClosing=s.initial+s.repl-s.ret;
+    html+=`<div class="confirm-sku-card">
+      <div class="confirm-sku-name">${s.name}</div>
+      <div class="confirm-sku-code">${s.sku}</div>`;
+    if(vars.length>0){
+      vars.sort((a,b)=>a[1].variation.localeCompare(b[1].variation)).forEach(([vid,v])=>{
+        const vd=s.vars[vid]||{initial:0,repl:0,ret:0};
+        const vClosing=vd.initial+vd.repl-vd.ret;
+        if(vClosing<=0) return;
+        const cur=cForm.qtys[vid]!==undefined?cForm.qtys[vid]:vClosing;
+        html+=`<div class="confirm-var-row">
+          <div class="confirm-var-left">
+            <div class="vn">${v.variation}</div>
+            <div class="vl">last closing: ${vClosing}</div>
+          </div>
+          <div class="qty-control">
+            <button class="qty-btn" onclick="adjustConfirm('${vid}',${vClosing},-1)">−</button>
+            <input class="qty-input" type="number" min="0" id="cqty-${vid}" value="${cur}" oninput="setConfirm('${vid}',this.value)" />
+            <button class="qty-btn" onclick="adjustConfirm('${vid}',${vClosing},1)">+</button>
+          </div>
+        </div>`;
+      });
+    } else {
+      const cur=cForm.qtys[s.sku]!==undefined?cForm.qtys[s.sku]:prevClosing;
+      html+=`<div class="confirm-var-row">
+        <div class="confirm-var-left">
+          <div class="vn">Quantity</div>
+          <div class="vl">last closing: ${prevClosing}</div>
+        </div>
+        <div class="qty-control">
+          <button class="qty-btn" onclick="adjustConfirm('${s.sku}',${prevClosing},-1)">−</button>
+          <input class="qty-input" type="number" min="0" id="cqty-${s.sku}" value="${cur}" oninput="setConfirm('${s.sku}',this.value)" />
+          <button class="qty-btn" onclick="adjustConfirm('${s.sku}',${prevClosing},1)">+</button>
+        </div>
+      </div>`;
+    }
+    html+='</div>';
+  });
+  const total=Object.values(cForm.qtys).reduce((a,b)=>a+b,0);
+  html+=`<button class="confirm-save-btn" onclick="saveConfirm()" ${total===0?'disabled':''}>
+    Save as Initial Count (${total} units)
+  </button>
+  <p class="entry-hint">Saves all as Initial Count entries for today</p>`;
+  el.innerHTML=html;
+}
+function adjustConfirm(vid,_max,delta){
+  cForm.qtys[vid]=Math.max(0,(cForm.qtys[vid]||0)+delta);
+  const el=document.getElementById('cqty-'+vid);
+  if(el) el.value=cForm.qtys[vid];
+  updateConfirmBtn();
+}
+function setConfirm(vid,val){
+  cForm.qtys[vid]=Math.max(0,parseInt(val)||0);
+  updateConfirmBtn();
+}
+function updateConfirmBtn(){
+  const total=Object.values(cForm.qtys).reduce((a,b)=>a+b,0);
+  const btn=document.querySelector('.confirm-save-btn');
+  if(btn){btn.disabled=total===0;btn.textContent=`Save as Initial Count (${total} units)`;}
+}
+async function saveConfirm(){
+  const total=Object.values(cForm.qtys).reduce((a,b)=>a+b,0);
+  if(!total||!state.store) return;
+  const btn=document.querySelector('.confirm-save-btn');
+  btn.disabled=true;btn.textContent='Saving…';
+  const now=new Date();
+  const rows=Object.entries(cForm.qtys).filter(([,q])=>q>0).map(([vid,qty])=>({
+    logId:genId(),timestamp:fmtTs(now),storeName:state.store,
+    actionType:'Initial Count',internalId:vid,quantity:qty,
+    scanSku:VAR_MAP[vid]?VAR_MAP[vid].sku:vid
+  }));
+  try{
+    const res=await fetch(URL_LOG,{method:'POST',body:JSON.stringify(rows)});
+    const data=await res.json();
+    if(data.success){
+      rows.forEach(r=>{
+        RAW.push({ts:now,dateKey:dateKey(now),store:state.store,action:'Initial Count',internalId:r.internalId,qty:r.quantity,sku:r.scanSku});
+        eForm.sessionLog.push({skuName:(SKU_MAP[r.scanSku]&&SKU_MAP[r.scanSku].name)||r.scanSku,varName:VAR_MAP[r.internalId]?VAR_MAP[r.internalId].variation:r.internalId,action:'Initial Count',qty:r.quantity});
+      });
+      cForm.qtys={};
+      renderPills();
+      if(!state.visitDay) state.visitDay=dateKey(now);
+      renderMain();
+      setStatus('ok',`Saved ${rows.length} initial count${rows.length>1?'s':''}`);
+      setTimeout(hideStatus,2500);
+      setTab('visit');
+    }
+  }catch(e){
+    setStatus('error','Save failed: '+e.message);
+    btn.disabled=false;btn.textContent='Save as Initial Count';
+  }
+}
 function setTab(t){
   state.tab=t;
-  const labels={'visit':'Visit','sold':'Sold','do':'DO','entry':'+ Log','returns':'↩ Ret'};
+  // reset cForm when switching to confirm so it re-reads prev closing fresh
+  if(t==='confirm') cForm.qtys={};
+  const labels={'visit':'Visit','sold':'Sold','do':'DO','entry':'+ Log','returns':'↩ Ret','confirm':'✓ Stock'};
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.textContent.trim()===labels[t]));
-  ['visit','sold','do','entry','returns'].forEach(id=>document.getElementById('tab-'+id).style.display=t===id?'block':'none');
+  ['visit','sold','do','entry','returns','confirm'].forEach(id=>document.getElementById('tab-'+id).style.display=t===id?'block':'none');
   if(t==='entry') renderEntryTab();
   if(t==='returns') renderReturnsTab();
+  if(t==='confirm') renderConfirmTab();
 }
 window.setTab=setTab;
 
