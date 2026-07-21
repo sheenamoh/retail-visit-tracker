@@ -384,7 +384,7 @@ function renderMain(){
   let tSold=0,tRepl=0,tRet=0;
   Object.values(curr).forEach(s=>{
     tRepl+=s.repl;tRet+=s.ret;
-    if(prev&&prev[s.sku]){const pc=prev[s.sku];tSold+=Math.max(0,pc.initial+pc.repl-pc.ret-s.initial);}
+    if(prev&&prev[s.sku]){const pc=prev[s.sku];tSold+=Math.max(0,pc.initial+pc.repl-pc.ret-s.initial+s.ret);}
   });
   // also count sold for prev SKUs not in curr today (initial treated as 0)
   if(prev) Object.keys(prev).forEach(sku=>{
@@ -433,15 +433,19 @@ function renderSoldTab(curr,prev){
     };
   });
   let html='';
-  Object.values(allSkus).map(s=>({...s,sold:prev[s.sku]?Math.max(0,prev[s.sku].initial+prev[s.sku].repl-prev[s.sku].ret-s.initial):0}))
+  // sold = prev closing - today initial + today returns (returns from same visit aren't sales)
+  Object.values(allSkus).map(s=>({...s,sold:prev[s.sku]?Math.max(0,prev[s.sku].initial+prev[s.sku].repl-prev[s.sku].ret-s.initial+s.ret):0}))
     .filter(s=>s.sold>0).sort((a,b)=>b.sold-a.sold).forEach(s=>{
       const pc=prev[s.sku].initial+prev[s.sku].repl-prev[s.sku].ret;
       const prevVars=prev[s.sku].vars||{};const currVars=s.vars||{};
       const allVids=[...new Set([...Object.keys(prevVars),...Object.keys(currVars)])];
       const varSold=allVids.map(vid=>{
-        const pv=prevVars[vid]||{initial:0,repl:0,ret:0};const cv=currVars[vid]||{initial:0,repl:0,ret:0};
-        const pvClose=pv.initial+pv.repl-pv.ret;const sold=Math.max(0,pvClose-cv.initial);
-        return{vid,sold,pvClose,cvInit:cv.initial};
+        const pv=prevVars[vid]||{initial:0,repl:0,ret:0};
+        const cv=currVars[vid]||{initial:0,repl:0,ret:0};
+        const pvClose=pv.initial+pv.repl-pv.ret;
+        // add back today's returns to avoid counting them as sold
+        const sold=Math.max(0,pvClose-cv.initial+cv.ret);
+        return{vid,sold,pvClose,cvInit:cv.initial,cvRet:cv.ret};
       }).filter(v=>v.sold>0).sort((a,b)=>b.sold-a.sold);
       html+=`<div class="sku-card"><div class="sku-name">${s.name}</div><div class="sku-code">${s.sku}</div>
         <div class="sku-stats">
@@ -454,7 +458,7 @@ function renderSoldTab(curr,prev){
         varSold.forEach(v=>{
           html+=`<div class="var-row"><span class="vname">${varName(v.vid)}</span>
             <span style="display:flex;align-items:center;gap:6px">
-              <span style="font-size:11px;color:var(--text3)">${v.pvClose} → ${v.cvInit}</span>
+              <span style="font-size:11px;color:var(--text3)">${v.pvClose} → ${v.cvInit}${v.cvRet>0?' (+'+v.cvRet+' ret)':''}</span>
               <span style="background:var(--green-bg);color:var(--green);font-size:11px;padding:2px 7px;border-radius:5px;font-weight:600">−${v.sold}</span>
             </span></div>`;
         });
@@ -801,13 +805,14 @@ function renderConfirmTab(){
   const prev=aggregate(getRows(state.store,prevDay));
   const skus=Object.values(prev).filter(s=>(s.initial+s.repl-s.ret)>0).sort((a,b)=>a.name.localeCompare(b.name));
   if(!skus.length){el.innerHTML='<div class="ret-empty">No closing stock found from previous visit.</div>';return;}
-  // init cForm with prev closing stock if not already set
+  // init cForm: use what was actually logged in prev visit (s.vars keys)
   if(Object.keys(cForm.qtys).length===0){
     skus.forEach(s=>{
-      const vars=Object.entries(VAR_MAP).filter(([vid,v])=>v.sku===s.sku);
-      if(vars.length>0){
-        vars.forEach(([vid])=>{
-          const vd=s.vars[vid]||{initial:0,repl:0,ret:0};
+      const loggedVids=Object.keys(s.vars);
+      const hasRealVars=loggedVids.some(vid=>vid!==s.sku);
+      if(hasRealVars){
+        loggedVids.forEach(vid=>{
+          const vd=s.vars[vid];
           const closing=vd.initial+vd.repl-vd.ret;
           if(closing>0) cForm.qtys[vid]=closing;
         });
@@ -819,39 +824,43 @@ function renderConfirmTab(){
   }
   let html=`<div class="confirm-intro">Pre-filled with closing stock from <strong>${dateLabel(prevDay)}</strong>. Adjust any that have changed, then save as today's initial count.</div>`;
   skus.forEach(s=>{
-    const vars=Object.entries(VAR_MAP).filter(([vid,v])=>v.sku===s.sku);
     const prevClosing=s.initial+s.repl-s.ret;
+    const loggedVids=Object.keys(s.vars);
+    const hasRealVars=loggedVids.some(vid=>vid!==s.sku);
     html+=`<div class="confirm-sku-card">
       <div class="confirm-sku-name">${s.name}</div>
       <div class="confirm-sku-code">${s.sku}</div>`;
-    if(vars.length>0){
-      vars.sort((a,b)=>a[1].variation.localeCompare(b[1].variation)).forEach(([vid,v])=>{
-        const vd=s.vars[vid]||{initial:0,repl:0,ret:0};
+    if(hasRealVars){
+      // show vars that were actually in the prev log, with readable names from VAR_MAP
+      loggedVids.filter(vid=>vid!==s.sku).sort((a,b)=>varName(a).localeCompare(varName(b))).forEach(vid=>{
+        const vd=s.vars[vid];
         const vClosing=vd.initial+vd.repl-vd.ret;
         if(vClosing<=0) return;
         const cur=cForm.qtys[vid]!==undefined?cForm.qtys[vid]:vClosing;
+        const changed=cur!==vClosing;
         html+=`<div class="confirm-var-row">
           <div class="confirm-var-left">
-            <div class="vn">${v.variation}</div>
+            <div class="vn" style="${changed?'color:var(--blue);font-weight:600':''}">${varName(vid)}${changed?' ✎':''}</div>
             <div class="vl">last closing: ${vClosing}</div>
           </div>
           <div class="qty-control">
             <button class="qty-btn" onclick="adjustConfirm('${vid}',${vClosing},-1)">−</button>
-            <input class="qty-input" type="number" min="0" id="cqty-${vid}" value="${cur}" oninput="setConfirm('${vid}',this.value)" />
+            <input class="qty-input" type="number" min="0" id="cqty-${vid}" value="${cur}" oninput="setConfirm('${vid}',this.value)" style="${changed?'background:var(--blue-bg);':''}"/>
             <button class="qty-btn" onclick="adjustConfirm('${vid}',${vClosing},1)">+</button>
           </div>
         </div>`;
       });
     } else {
       const cur=cForm.qtys[s.sku]!==undefined?cForm.qtys[s.sku]:prevClosing;
+      const changed=cur!==prevClosing;
       html+=`<div class="confirm-var-row">
         <div class="confirm-var-left">
-          <div class="vn">Quantity</div>
+          <div class="vn" style="${changed?'color:var(--blue);font-weight:600':''}">${changed?'Quantity ✎':'Quantity'}</div>
           <div class="vl">last closing: ${prevClosing}</div>
         </div>
         <div class="qty-control">
           <button class="qty-btn" onclick="adjustConfirm('${s.sku}',${prevClosing},-1)">−</button>
-          <input class="qty-input" type="number" min="0" id="cqty-${s.sku}" value="${cur}" oninput="setConfirm('${s.sku}',this.value)" />
+          <input class="qty-input" type="number" min="0" id="cqty-${s.sku}" value="${cur}" oninput="setConfirm('${s.sku}',this.value)" style="${changed?'background:var(--blue-bg);':''}"/>
           <button class="qty-btn" onclick="adjustConfirm('${s.sku}',${prevClosing},1)">+</button>
         </div>
       </div>`;
@@ -867,12 +876,11 @@ function renderConfirmTab(){
 }
 function adjustConfirm(vid,_max,delta){
   cForm.qtys[vid]=Math.max(0,(cForm.qtys[vid]||0)+delta);
-  const el=document.getElementById('cqty-'+vid);
-  if(el) el.value=cForm.qtys[vid];
-  updateConfirmBtn();
+  renderConfirmTab();
 }
 function setConfirm(vid,val){
   cForm.qtys[vid]=Math.max(0,parseInt(val)||0);
+  // just update btn, don't re-render (user is typing)
   updateConfirmBtn();
 }
 function updateConfirmBtn(){
