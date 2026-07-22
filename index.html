@@ -158,6 +158,30 @@ select{width:100%;padding:10px 12px;border:0.5px solid var(--border2);border-rad
 .ret-save-btn:disabled{opacity:.4;cursor:not-allowed}
 .ret-save-btn:active{opacity:.85}
 .ret-empty{text-align:center;padding:32px 16px;color:var(--text3);font-size:14px;line-height:1.6}
+
+@media print {
+  body { background: white !important; color: black !important; font-size: 12px; }
+  .app { padding: 0; max-width: 100%; }
+  #print-view { display: block !important; }
+  #dashboard { display: none !important; }
+  .print-header { margin-bottom: 16px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+  .print-title { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
+  .print-meta { font-size: 12px; color: #666; margin-bottom: 2px; }
+  .print-brand { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 4px 0 2px; border-bottom: 1px solid #999; margin-bottom: 3px; margin-top: 12px; color: #333; }
+  .print-brand:first-of-type { margin-top: 0; }
+  .print-hdr { display: grid; grid-template-columns: 1fr 32px 32px 32px; font-size: 9px; color: #888; padding: 2px 0; border-bottom: 0.5px solid #ddd; }
+  .print-hdr span:not(:first-child) { text-align: center; }
+  .print-row { display: grid; grid-template-columns: 1fr 32px 32px 32px; font-size: 10px; padding: 2px 0; border-bottom: 0.5px solid #eee; align-items: center; }
+  .print-row:last-child { border-bottom: none; }
+  .print-val { text-align: center; font-weight: 600; color: #333; }
+  .print-val.empty { color: #bbb; }
+  .print-footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #ccc; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; font-size: 11px; }
+  .print-sig-label { color: #888; margin-bottom: 20px; }
+  .print-sig-line { border-bottom: 1px solid #333; margin-bottom: 4px; height: 24px; }
+}
+@media screen {
+  #print-view { display: none; }
+}
 </style>
 </head>
 <body>
@@ -402,9 +426,34 @@ function renderMain(){
   renderDOTab(curr);
 }
 
+const BRAND_ORDER=['Atom & The Dot','Cham Station','ChamPOP by Cham Station','Other'];
+function getBrand(s){
+  if(s.category==='Atom & the Dot') return 'Atom & The Dot';
+  if(s.category==='Cham Station') return s.sku.startsWith('CP-')?'ChamPOP by Cham Station':'Cham Station';
+  if(s.category) return s.category;
+  if(s.sku.startsWith('TB-')||s.sku.startsWith('MB-')) return 'Atom & The Dot';
+  if(s.sku.startsWith('CP-')) return 'ChamPOP by Cham Station';
+  if(s.sku.startsWith('CS-')) return 'Cham Station';
+  return 'Other';
+}
+function groupSkus(skuList){
+  const groups={};
+  skuList.forEach(s=>{
+    const b=getBrand(s);
+    if(!groups[b]) groups[b]=[];
+    groups[b].push(s);
+  });
+  const sorted=[...BRAND_ORDER.filter(b=>groups[b]),...Object.keys(groups).filter(b=>!BRAND_ORDER.includes(b)&&groups[b])];
+  return sorted.map(b=>({brand:b,skus:groups[b].sort((a,c)=>a.name.localeCompare(c.name))}));
+}
+function brandHeader(brand){
+  return '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:10px 0 4px;border-bottom:0.5px solid var(--border2);margin-bottom:6px;margin-top:14px">'+brand+'</div>';
+}
 function renderVisitTab(curr){
   let html='';
-  Object.values(curr).sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
+  groupSkus(Object.values(curr)).forEach(({brand,skus})=>{
+    html+=brandHeader(brand);
+    skus.forEach(s=>{
     const closing=s.initial+s.repl-s.ret;
     const ve=Object.entries(s.vars);
     html+=`<div class="sku-card"><div class="sku-name">${s.name}</div><div class="sku-code">${s.sku}</div>
@@ -422,6 +471,7 @@ function renderVisitTab(curr){
     }
     html+='</div>';
   });
+  });
   document.getElementById('tab-visit').innerHTML=html||'<div class="empty">No entries for this visit.</div>';
 }
 
@@ -435,9 +485,12 @@ function renderSoldTab(curr,prev){
       initial:0, repl:0, ret:0, vars:{}
     };
   });
+  const soldSkus=Object.values(allSkus).map(s=>({...s,sold:prev[s.sku]?Math.max(0,prev[s.sku].initial+prev[s.sku].repl-prev[s.sku].ret-s.initial):0})).filter(s=>s.sold>0);
   let html='';
-  Object.values(allSkus).map(s=>({...s,sold:prev[s.sku]?Math.max(0,prev[s.sku].initial+prev[s.sku].repl-prev[s.sku].ret-s.initial):0}))
-    .filter(s=>s.sold>0).sort((a,b)=>b.sold-a.sold).forEach(s=>{
+  groupSkus(soldSkus).forEach(({brand,skus})=>{
+    skus.sort((a,b)=>b.sold-a.sold);
+    html+=brandHeader(brand);
+    skus.forEach(s=>{
       const pc=prev[s.sku].initial+prev[s.sku].repl-prev[s.sku].ret;
       const prevVars=prev[s.sku].vars||{};const currVars=s.vars||{};
       const allVids=[...new Set([...Object.keys(prevVars),...Object.keys(currVars)])];
@@ -468,25 +521,15 @@ function renderSoldTab(curr,prev){
       }
       html+='</div>';
     });
+  });
   document.getElementById('tab-sold').innerHTML=html||'<div class="empty">No sales detected vs previous visit.</div>';
 }
 
 function renderDOTab(curr){
-  const groups={};
-  Object.values(curr).forEach(s=>{
-    let brand='Other';
-    if(s.category==='Atom & the Dot') brand='Atom & The Dot';
-    else if(s.category==='Cham Station') brand=s.sku.startsWith('CP-')?'ChamPOP by Cham Station':'Cham Station';
-    else if(s.category) brand=s.category;
-    if(!groups[brand]) groups[brand]=[];
-    groups[brand].push(s);
-  });
-  const order=['Atom & The Dot','Cham Station','ChamPOP by Cham Station'];
-  const sorted=[...order.filter(b=>groups[b]),...Object.keys(groups).filter(b=>!order.includes(b)&&groups[b])];
   let html='<div class="do-wrap">';
-  sorted.forEach(brand=>{
+  groupSkus(Object.values(curr)).forEach(({brand,skus})=>{
     html+=`<div class="do-brand">${brand}</div><div class="do-hdr"><span>Item</span><span>Init</span><span>Repl</span><span>Ret</span></div>`;
-    groups[brand].sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
+    skus.forEach(s=>{
       html+=`<div class="do-row"><span style="font-size:12px;line-height:1.3">${s.name}</span>
         <span class="do-val ${s.initial?'has':''}">${s.initial||'—'}</span>
         <span class="do-val ${s.repl?'has':''}">${s.repl||'—'}</span>
@@ -494,6 +537,7 @@ function renderDOTab(curr){
     });
   });
   html+='</div>';
+  html+=`<button onclick="printDO()" style="width:100%;margin-top:14px;padding:11px;background:transparent;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:13px;color:var(--text2);cursor:pointer">🖨 Print / Save as PDF</button>`;
   document.getElementById('tab-do').innerHTML=html;
 }
 
@@ -702,10 +746,12 @@ function renderReturnsTab(){
   const rows=getRows(state.store,state.visitDay);
   const curr=aggregate(rows);
   // filter to SKUs with available stock (initial + repl > 0)
-  const skusWithStock=Object.values(curr).filter(s=>(s.initial+s.repl)>0).sort((a,b)=>a.name.localeCompare(b.name));
+  const skusWithStock=Object.values(curr).filter(s=>(s.initial+s.repl)>0);
   if(!skusWithStock.length){el.innerHTML='<div class="ret-empty">No stock logged for this visit yet.<br>Log initial counts first.</div>';return;}
   let html='';
-  skusWithStock.forEach(s=>{
+  groupSkus(skusWithStock).forEach(({brand,skus})=>{
+    html+=brandHeader(brand);
+    skus.forEach(s=>{
     const vars=Object.entries(VAR_MAP).filter(([vid,v])=>v.sku===s.sku);
     const avail=s.initial+s.repl; // max returnable
     html+=`<div class="ret-sku-card">
@@ -739,6 +785,7 @@ function renderReturnsTab(){
       </div>`;
     }
     html+='</div>';
+    });
   });
   const totalRet=Object.values(rForm.qtys).reduce((a,b)=>a+b,0);
   html+=`<button class="ret-save-btn" onclick="saveReturns()" ${totalRet===0?'disabled':''}>
@@ -805,7 +852,7 @@ function renderConfirmTab(){
     return;
   }
   const prev=aggregate(getRows(state.store,prevDay));
-  const skus=Object.values(prev).filter(s=>(s.initial+s.repl-s.ret)>0).sort((a,b)=>a.name.localeCompare(b.name));
+  const skus=Object.values(prev).filter(s=>(s.initial+s.repl-s.ret)>0);
   if(!skus.length){el.innerHTML='<div class="ret-empty">No closing stock found from previous visit.</div>';return;}
   // init cForm: use what was actually logged in prev visit (s.vars keys)
   if(Object.keys(cForm.qtys).length===0){
@@ -825,7 +872,9 @@ function renderConfirmTab(){
     });
   }
   let html=`<div class="confirm-intro">Pre-filled with closing stock from <strong>${dateLabel(prevDay)}</strong>. Adjust any that have changed, then save as today's initial count.</div>`;
-  skus.forEach(s=>{
+  groupSkus(skus).forEach(({brand,skus:bskus})=>{
+    html+=brandHeader(brand);
+    bskus.forEach(s=>{
     const prevClosing=s.initial+s.repl-s.ret;
     const loggedVids=Object.keys(s.vars);
     const hasRealVars=loggedVids.some(vid=>vid!==s.sku);
@@ -871,6 +920,7 @@ function renderConfirmTab(){
       </div>`;
     }
     html+='</div>';
+    });
   });
   const total=Object.values(cForm.qtys).reduce((a,b)=>a+b,0);
   html+=`<button class="confirm-save-btn" onclick="saveConfirm()" ${total===0?'disabled':''}>
@@ -929,6 +979,33 @@ async function saveConfirm(){
     setStatus('error','Save failed: '+e.message);
     btn.disabled=false;btn.textContent='Save as Initial Count';
   }
+}
+function printDO(){
+  if(!state.store||!state.visitDay) return;
+  // grab existing DO tab content (already rendered and styled)
+  const doContent=document.getElementById('tab-do').innerHTML;
+  const modal=document.createElement('div');
+  modal.className='do-modal-overlay';
+  modal.id='do-modal';
+  modal.innerHTML=`<div class="do-modal">
+    <div class="do-modal-header">
+      <div>
+        <div class="do-modal-title">Makers Inq Sdn Bhd</div>
+        <div class="do-modal-meta">${state.store} &nbsp;·&nbsp; ${dateLabel(state.visitDay)}</div>
+      </div>
+    </div>
+    ${doContent}
+  </div>`;
+  // remove the print button from the cloned content inside modal
+  const btn=modal.querySelector('button[onclick="printDO()"]');
+  if(btn) btn.remove();
+  // tap overlay background to close
+  modal.addEventListener('click', e=>{ if(e.target===modal) closeDOModal(); });
+  document.body.appendChild(modal);
+}
+function closeDOModal(){
+  const m=document.getElementById('do-modal');
+  if(m) m.remove();
 }
 function setTab(t){
   state.tab=t;
