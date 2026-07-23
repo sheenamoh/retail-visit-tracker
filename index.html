@@ -982,6 +982,9 @@ async function saveConfirm(){
 }
 function printDO(){
   if(!state.store||!state.visitDay) return;
+  // remove any existing modal first
+  const existing=document.getElementById('do-modal');
+  if(existing) existing.remove();
   // grab existing DO tab content (already rendered and styled)
   const doContent=document.getElementById('tab-do').innerHTML;
   const modal=document.createElement('div');
