@@ -843,10 +843,9 @@ function renderConfirmTab(){
   if(!state.store){el.innerHTML='<div class="ret-empty">Select a store first.</div>';return;}
   // get previous visit
   const days=[...new Set(RAW.filter(r=>r.store===state.store).map(r=>r.dateKey))].sort();
-  // find prev day relative to selected visit (or latest if no visit selected)
-  const refDay=state.visitDay||days[days.length-1];
-  const refIdx=days.indexOf(refDay);
-  const prevDay=refIdx>0?days[refIdx-1]:null;
+  // always pre-fill from the most recent logged visit (ignore selected visit date)
+  // because ✓ Stock is used at the START of a new visit, before today is logged
+  const prevDay=days.length>0?days[days.length-1]:null;
   if(!prevDay){
     el.innerHTML='<div class="ret-empty">No previous visit found for this store.<br>Use <strong>+ Log</strong> to enter initial counts manually.</div>';
     return;
@@ -994,10 +993,21 @@ function printDO(){
     <div class="do-modal-header">
       <div>
         <div class="do-modal-title">Makers Inq Sdn Bhd</div>
+        <div class="do-modal-meta" style="font-size:13px;font-weight:600;color:#333;margin-top:2px">DELIVERY ORDER</div>
         <div class="do-modal-meta">${state.store} &nbsp;·&nbsp; ${dateLabel(state.visitDay)}</div>
       </div>
     </div>
     ${doContent}
+    <div style="margin-top:20px;padding-top:14px;border-top:0.5px solid #ccc;display:flex;justify-content:flex-end">
+      <div style="width:36%;font-size:11px;color:#333">
+        <div style="font-weight:600;margin-bottom:12px">Received by:</div>
+        <div style="border-bottom:1px solid #333;margin-bottom:6px;height:40px"></div>
+        <div style="color:#888;font-size:10px;margin-bottom:8px">(Authorised Signatory &amp; Company Stamp)</div>
+        <div style="margin-bottom:4px">Name: ___________________</div>
+        <div style="margin-bottom:4px">Date: ____________________</div>
+        <div>Mobile Number: __________</div>
+      </div>
+    </div>
   </div>`;
   // remove the print button from the cloned content inside modal
   const btn=modal.querySelector('button[onclick="printDO()"]');
