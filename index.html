@@ -465,7 +465,8 @@ function renderVisitTab(curr){
     if(ve.length>=1&&ve.some(([vid])=>vid!==s.sku)){
       html+='<div class="vars">';
       ve.sort((a,b)=>varName(a[0]).localeCompare(varName(b[0]))).forEach(([vid,vd])=>{
-        html+=`<div class="var-row"><span class="vname">${varName(vid)}</span><span class="vclose">${vd.initial+vd.repl-vd.ret}</span></div>`;
+        const retBadge=vd.ret>0?`<span style="font-size:11px;color:var(--amber);margin-left:6px">↩${vd.ret}</span>`:'';
+        html+=`<div class="var-row"><span class="vname">${varName(vid)}</span><span style="display:flex;align-items:center"><span class="vclose">${vd.initial+vd.repl-vd.ret}</span>${retBadge}</span></div>`;
       });
       html+='</div>';
     }
@@ -511,11 +512,13 @@ function renderSoldTab(curr,prev){
       if(varSold.length>0){
         html+='<div class="vars">';
         varSold.forEach(v=>{
-          html+=`<div class="var-row"><span class="vname">${varName(v.vid)}</span>
-            <span style="display:flex;align-items:center;gap:6px">
+          html+=`<div class="var-row">
+            <span class="vname">${varName(v.vid)}</span>
+            <span style="display:flex;align-items:center;gap:8px">
               <span style="font-size:11px;color:var(--text3)">${v.pvClose} → ${v.cvInit}</span>
               <span style="background:var(--green-bg);color:var(--green);font-size:11px;padding:2px 7px;border-radius:5px;font-weight:600">−${v.sold}</span>
-            </span></div>`;
+            </span>
+          </div>`;
         });
         html+='</div>';
       }
