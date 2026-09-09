@@ -500,8 +500,8 @@ function renderSoldTab(curr,prev){
         const cv=currVars[vid]||{initial:0,repl:0,ret:0};
         const pvClose=pv.initial+pv.repl-pv.ret;
         // add back today's returns to avoid counting them as sold
-        const sold=Math.max(0,pvClose-cv.initial+cv.ret);
-        return{vid,sold,pvClose,cvInit:cv.initial,cvRet:cv.ret};
+        const sold=Math.max(0,pvClose-cv.initial);
+        return{vid,sold,pvClose,cvInit:cv.initial};
       }).filter(v=>v.sold>0).sort((a,b)=>b.sold-a.sold);
       html+=`<div class="sku-card"><div class="sku-name">${s.name}</div><div class="sku-code">${s.sku}</div>
         <div class="sku-stats">
