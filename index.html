@@ -195,7 +195,7 @@ select{width:100%;padding:10px 12px;border:0.5px solid var(--border2);border-rad
 
   <div id="dashboard">
     <div class="refresh-row">
-      <button class="refresh-btn" onclick="loadData()">
+      <button class="refresh-btn" onclick="loadData(true)">
         <span id="refresh-icon">↻</span> Refresh
       </button>
       <span class="updated" id="last-updated"></span>
@@ -279,34 +279,88 @@ function fmtTs(d){
   return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
 }
 
-async function loadData(){
-  document.getElementById('refresh-icon').innerHTML='<span class="spinner"></span>';
-  setStatus('loading','Fetching data…');
+const CACHE_KEY='miq_ref_v1';
+const CACHE_TTL=24*60*60*1000; // 24 hours
+
+function loadRefFromCache(){
   try{
-    const [logRows,skuRows,varRows,retailerRows]=await Promise.all([
-      fetchSheet(URL_LOG,'Inventory_Log'),
+    const raw=localStorage.getItem(CACHE_KEY);
+    if(!raw) return null;
+    const c=JSON.parse(raw);
+    if(Date.now()-c.ts>CACHE_TTL) return null;
+    return c;
+  }catch(e){return null;}
+}
+
+function saveRefToCache(skuRows,varRows,retailerRows){
+  try{
+    localStorage.setItem(CACHE_KEY,JSON.stringify({ts:Date.now(),skuRows,varRows,retailerRows}));
+  }catch(e){}
+}
+
+function applyRefData(skuRows,varRows,retailerRows){
+  SKU_MAP={};
+  skuRows.forEach(r=>{
+    if(r['SKU']) SKU_MAP[r['SKU']]={name:r['Product Name']||r['SKU'],category:r['Category']||''};
+  });
+  SKU_LIST=skuRows.filter(r=>r['SKU']).map(r=>({sku:r['SKU'],name:r['Product Name']||r['SKU']}));
+  VAR_MAP={};
+  varRows.forEach(r=>{
+    if(r['Internal ID']) VAR_MAP[r['Internal ID']]={sku:r['SKU'],variation:r['Variation']||''};
+  });
+  RETAILER_LIST=retailerRows.map(r=>r['Retailer Short Name']).filter(Boolean).sort();
+}
+
+async function fetchRefDataAndCache(){
+  try{
+    const [skuRows,varRows,retailerRows]=await Promise.all([
       fetchSheet(URL_REF,'SKUList'),
       fetchSheet(URL_REF,'Internal_Variation_List'),
       fetchSheet(URL_LOG,'Retailer_Master')
     ]);
-    SKU_MAP={};
-    skuRows.forEach(r=>{
-      if(r['SKU']) SKU_MAP[r['SKU']]={name:r['Product Name']||r['SKU'],category:r['Category']||''};
-    });
-    SKU_LIST=skuRows.filter(r=>r['SKU']).map(r=>({sku:r['SKU'],name:r['Product Name']||r['SKU']}));
-    VAR_MAP={};
-    varRows.forEach(r=>{
-      if(r['Internal ID']) VAR_MAP[r['Internal ID']]={sku:r['SKU'],variation:r['Variation']||''};
-    });
-    RETAILER_LIST=retailerRows.map(r=>r['Retailer Short Name']).filter(Boolean).sort();
-    RAW=logRows.map(r=>{
-      const ts=parseTs(r['Timestamp']);
-      return{ts,dateKey:dateKey(ts),store:r['Store Name'],action:r['Action type'],internalId:r['Internal ID'],qty:parseFloat(r['Quantity'])||0,sku:r['Scan SKU']};
-    }).filter(r=>r.ts&&r.store&&r.sku);
-    document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'});
-    setStatus('ok',`Loaded ${RAW.length} entries`);
-    setTimeout(hideStatus,3000);
+    applyRefData(skuRows,varRows,retailerRows);
+    saveRefToCache(skuRows,varRows,retailerRows);
     populateStores();
+  }catch(e){console.warn('Background ref refresh failed:',e);}
+}
+
+async function loadData(forceRefresh=false){
+  document.getElementById('refresh-icon').innerHTML='<span class="spinner"></span>';
+  setStatus('loading','Fetching data…');
+  try{
+    const cache=forceRefresh?null:loadRefFromCache();
+    if(cache){
+      // Use cached ref data, only fetch log
+      applyRefData(cache.skuRows,cache.varRows,cache.retailerRows);
+      const logRows=await fetchSheet(URL_LOG,'Inventory_Log');
+      RAW=logRows.map(r=>{
+        const ts=parseTs(r['Timestamp']);
+        return{ts,dateKey:dateKey(ts),store:r['Store Name'],action:r['Action type'],internalId:r['Internal ID'],qty:parseFloat(r['Quantity'])||0,sku:r['Scan SKU']};
+      }).filter(r=>r.ts&&r.store&&r.sku);
+      document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'});
+      setStatus('ok',`Loaded ${RAW.length} entries`);
+      setTimeout(hideStatus,3000);
+      populateStores();
+      // Silently refresh ref data in background
+      fetchRefDataAndCache();
+    }else{
+      const [logRows,skuRows,varRows,retailerRows]=await Promise.all([
+        fetchSheet(URL_LOG,'Inventory_Log'),
+        fetchSheet(URL_REF,'SKUList'),
+        fetchSheet(URL_REF,'Internal_Variation_List'),
+        fetchSheet(URL_LOG,'Retailer_Master')
+      ]);
+      applyRefData(skuRows,varRows,retailerRows);
+      saveRefToCache(skuRows,varRows,retailerRows);
+      RAW=logRows.map(r=>{
+        const ts=parseTs(r['Timestamp']);
+        return{ts,dateKey:dateKey(ts),store:r['Store Name'],action:r['Action type'],internalId:r['Internal ID'],qty:parseFloat(r['Quantity'])||0,sku:r['Scan SKU']};
+      }).filter(r=>r.ts&&r.store&&r.sku);
+      document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'});
+      setStatus('ok',`Loaded ${RAW.length} entries`);
+      setTimeout(hideStatus,3000);
+      populateStores();
+    }
   }catch(e){
     setStatus('error','Failed: '+e.message);
   }
