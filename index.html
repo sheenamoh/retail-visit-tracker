@@ -311,17 +311,40 @@ function applyRefData(skuRows,varRows,retailerRows){
   RETAILER_LIST=retailerRows.map(r=>r['Retailer Short Name']).filter(Boolean).sort();
 }
 
+async function fetchWithRetry(url,params,retries=2,delay=2000){
+  for(let i=0;i<=retries;i++){
+    try{
+      const res=await fetch(url+'?'+new URLSearchParams(params));
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      return await res.json();
+    }catch(e){
+      if(i===retries) throw e;
+      await new Promise(r=>setTimeout(r,delay));
+    }
+  }
+}
+
+async function fetchSheetR(baseUrl,sheet){
+  return fetchWithRetry(baseUrl,{sheet});
+}
+
 async function fetchRefDataAndCache(){
   try{
-    const [skuRows,varRows,retailerRows]=await Promise.all([
-      fetchSheet(URL_REF,'SKUList'),
-      fetchSheet(URL_REF,'Internal_Variation_List'),
-      fetchSheet(URL_LOG,'Retailer_Master')
-    ]);
+    // Sequential: one call at a time to avoid cold-start pile-up
+    const skuRows=await fetchSheetR(URL_REF,'SKUList');
+    const varRows=await fetchSheetR(URL_REF,'Internal_Variation_List');
+    const retailerRows=await fetchSheetR(URL_LOG,'Retailer_Master');
     applyRefData(skuRows,varRows,retailerRows);
     saveRefToCache(skuRows,varRows,retailerRows);
     populateStores();
   }catch(e){console.warn('Background ref refresh failed:',e);}
+}
+
+function parseLogRows(logRows){
+  return logRows.map(r=>{
+    const ts=parseTs(r['Timestamp']);
+    return{ts,dateKey:dateKey(ts),store:r['Store Name'],action:r['Action type'],internalId:r['Internal ID'],qty:parseFloat(r['Quantity'])||0,sku:r['Scan SKU']};
+  }).filter(r=>r.ts&&r.store&&r.sku);
 }
 
 async function loadData(forceRefresh=false){
@@ -330,13 +353,12 @@ async function loadData(forceRefresh=false){
   try{
     const cache=forceRefresh?null:loadRefFromCache();
     if(cache){
-      // Use cached ref data, only fetch log
+      // Cache hit: apply ref data immediately, then fetch only the log
       applyRefData(cache.skuRows,cache.varRows,cache.retailerRows);
-      const logRows=await fetchSheet(URL_LOG,'Inventory_Log');
-      RAW=logRows.map(r=>{
-        const ts=parseTs(r['Timestamp']);
-        return{ts,dateKey:dateKey(ts),store:r['Store Name'],action:r['Action type'],internalId:r['Internal ID'],qty:parseFloat(r['Quantity'])||0,sku:r['Scan SKU']};
-      }).filter(r=>r.ts&&r.store&&r.sku);
+      populateStores();
+      setStatus('loading','Updating visit log…');
+      const logRows=await fetchSheetR(URL_LOG,'Inventory_Log');
+      RAW=parseLogRows(logRows);
       document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'});
       setStatus('ok',`Loaded ${RAW.length} entries`);
       setTimeout(hideStatus,3000);
@@ -344,25 +366,25 @@ async function loadData(forceRefresh=false){
       // Silently refresh ref data in background
       fetchRefDataAndCache();
     }else{
-      const [logRows,skuRows,varRows,retailerRows]=await Promise.all([
-        fetchSheet(URL_LOG,'Inventory_Log'),
-        fetchSheet(URL_REF,'SKUList'),
-        fetchSheet(URL_REF,'Internal_Variation_List'),
-        fetchSheet(URL_LOG,'Retailer_Master')
-      ]);
+      // No cache: fetch log first (wakes up Apps Script), show UI, then fetch ref data
+      setStatus('loading','Loading visit log…');
+      const logRows=await fetchSheetR(URL_LOG,'Inventory_Log');
+      RAW=parseLogRows(logRows);
+      populateStores(); // populates from log stores while ref loads
+      setStatus('loading','Loading product data…');
+      // Ref data sequential to avoid cold-start hammering
+      const skuRows=await fetchSheetR(URL_REF,'SKUList');
+      const varRows=await fetchSheetR(URL_REF,'Internal_Variation_List');
+      const retailerRows=await fetchSheetR(URL_LOG,'Retailer_Master');
       applyRefData(skuRows,varRows,retailerRows);
       saveRefToCache(skuRows,varRows,retailerRows);
-      RAW=logRows.map(r=>{
-        const ts=parseTs(r['Timestamp']);
-        return{ts,dateKey:dateKey(ts),store:r['Store Name'],action:r['Action type'],internalId:r['Internal ID'],qty:parseFloat(r['Quantity'])||0,sku:r['Scan SKU']};
-      }).filter(r=>r.ts&&r.store&&r.sku);
       document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'});
       setStatus('ok',`Loaded ${RAW.length} entries`);
       setTimeout(hideStatus,3000);
       populateStores();
     }
   }catch(e){
-    setStatus('error','Failed: '+e.message);
+    setStatus('error','Failed — tap ↻ to retry. ('+e.message+')');
   }
   document.getElementById('refresh-icon').textContent='↻';
 }
