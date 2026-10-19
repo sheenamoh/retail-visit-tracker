@@ -510,6 +510,20 @@ function aggregate(rows){
   });
   return map;
 }
+// Sold per variation = prev closing − today initial (floored at 0), summed for the SKU.
+// Summing per variation stops new/uncounted stock in one variation hiding sales in another.
+// If either visit logged the SKU without variations, fall back to SKU totals
+// (otherwise switching from SKU-level to variation-level counting looks like everything sold).
+function soldForVar(pv,cv){
+  pv=pv||{initial:0,repl:0,ret:0}; cv=cv||{initial:0,repl:0,ret:0};
+  return Math.max(0,pv.initial+pv.repl-pv.ret-cv.initial);
+}
+function skuSold(p,c){
+  if(!p) return 0;
+  const pVars=p.vars||{}, cVars=(c&&c.vars)||{};
+  if(pVars[p.sku]||cVars[p.sku]) return Math.max(0,p.initial+p.repl-p.ret-(c?c.initial:0));
+  return [...new Set([...Object.keys(pVars),...Object.keys(cVars)])].reduce((t,vid)=>t+soldForVar(pVars[vid],cVars[vid]),0);
+}
 function varName(vid){return(VAR_MAP[vid]&&VAR_MAP[vid].variation)||vid.split('-').pop();}
 
 function renderMain(){
@@ -545,11 +559,11 @@ function renderMain(){
   let tSold=0,tRepl=0,tRet=0;
   Object.values(curr).forEach(s=>{
     tRepl+=s.repl;tRet+=s.ret;
-    if(prev&&prev[s.sku]){const pc=prev[s.sku];tSold+=Math.max(0,pc.initial+pc.repl-pc.ret-s.initial);}
+    if(prev) tSold+=skuSold(prev[s.sku],s);
   });
   // also count sold for prev SKUs not in curr today (initial treated as 0)
   if(prev) Object.keys(prev).forEach(sku=>{
-    if(!curr[sku]){const pc=prev[sku];tSold+=Math.max(0,pc.initial+pc.repl-pc.ret);}
+    if(!curr[sku]) tSold+=skuSold(prev[sku],null);
   });
   document.getElementById('m-skus').textContent=Object.keys(curr).length;
   document.getElementById('m-sold').textContent=prev?tSold:'—';
@@ -620,7 +634,7 @@ function renderSoldTab(curr,prev){
       initial:0, repl:0, ret:0, vars:{}
     };
   });
-  const soldSkus=Object.values(allSkus).map(s=>({...s,sold:prev[s.sku]?Math.max(0,prev[s.sku].initial+prev[s.sku].repl-prev[s.sku].ret-s.initial):0})).filter(s=>s.sold>0);
+  const soldSkus=Object.values(allSkus).map(s=>({...s,sold:skuSold(prev[s.sku],s)})).filter(s=>s.sold>0);
   let html='';
   groupSkus(soldSkus).forEach(({brand,skus})=>{
     skus.sort((a,b)=>b.sold-a.sold);
@@ -633,8 +647,7 @@ function renderSoldTab(curr,prev){
         const pv=prevVars[vid]||{initial:0,repl:0,ret:0};
         const cv=currVars[vid]||{initial:0,repl:0,ret:0};
         const pvClose=pv.initial+pv.repl-pv.ret;
-        // add back today's returns to avoid counting them as sold
-        const sold=Math.max(0,pvClose-cv.initial);
+        const sold=soldForVar(pv,cv);
         return{vid,sold,pvClose,cvInit:cv.initial};
       }).filter(v=>v.sold>0).sort((a,b)=>b.sold-a.sold);
       html+=`<div class="sku-card"><div class="sku-name">${s.name}</div><div class="sku-code">${s.sku}</div>
