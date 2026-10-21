@@ -498,15 +498,17 @@ function aggregate(rows){
   const map={};
   rows.forEach(r=>{
     if(!r.sku) return;
-    if(!map[r.sku]) map[r.sku]={sku:r.sku,name:(SKU_MAP[r.sku]&&SKU_MAP[r.sku].name)||r.sku,category:(SKU_MAP[r.sku]&&SKU_MAP[r.sku].category)||'',initial:0,repl:0,ret:0,vars:{}};
+    // group by the variation's current parent SKU, so history follows a SKU code rename
+    const sku=(VAR_MAP[r.internalId]&&VAR_MAP[r.internalId].sku)||r.sku;
+    if(!map[sku]) map[sku]={sku,name:(SKU_MAP[sku]&&SKU_MAP[sku].name)||sku,category:(SKU_MAP[sku]&&SKU_MAP[sku].category)||'',initial:0,repl:0,ret:0,vars:{}};
     const a=r.action;
-    if(a==='Initial Count') map[r.sku].initial+=r.qty;
-    else if(a==='Replenishment') map[r.sku].repl+=r.qty;
-    else if(a==='Return') map[r.sku].ret+=r.qty;
-    if(!map[r.sku].vars[r.internalId]) map[r.sku].vars[r.internalId]={initial:0,repl:0,ret:0};
-    if(a==='Initial Count') map[r.sku].vars[r.internalId].initial+=r.qty;
-    else if(a==='Replenishment') map[r.sku].vars[r.internalId].repl+=r.qty;
-    else if(a==='Return') map[r.sku].vars[r.internalId].ret+=r.qty;
+    if(a==='Initial Count') map[sku].initial+=r.qty;
+    else if(a==='Replenishment') map[sku].repl+=r.qty;
+    else if(a==='Return') map[sku].ret+=r.qty;
+    if(!map[sku].vars[r.internalId]) map[sku].vars[r.internalId]={initial:0,repl:0,ret:0};
+    if(a==='Initial Count') map[sku].vars[r.internalId].initial+=r.qty;
+    else if(a==='Replenishment') map[sku].vars[r.internalId].repl+=r.qty;
+    else if(a==='Return') map[sku].vars[r.internalId].ret+=r.qty;
   });
   return map;
 }
